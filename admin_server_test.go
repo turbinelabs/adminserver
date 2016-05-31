@@ -40,8 +40,7 @@ func mkAdminServer(t *testing.T) (AdminServer, *proc.MockManagedProc, func()) {
 
 	as := New("localhost", 0, mockProc)
 	go func() {
-		err := as.Start()
-		assert.Nil(t, err)
+		as.Start()
 	}()
 
 	for !as.Listening() {
