@@ -1,10 +1,14 @@
 package main
 
 import (
+	"errors"
+	"fmt"
+	"os"
 	"strings"
 	"sync"
 
 	"github.com/turbinelabs/adminserver"
+	"github.com/turbinelabs/agent/confagent"
 	"github.com/turbinelabs/cli"
 	"github.com/turbinelabs/cli/command"
 	"github.com/turbinelabs/proc"
@@ -31,6 +35,13 @@ func Cmd() *command.Cmd {
 	cmd.Flags.IntVar(&r.ListenPort, "port", DefaultListenPort, "What port should we listen on")
 	cmd.Flags.StringVar(&r.Nginx, "nginx", DefaultNginxExecutable, "How to run nginx")
 
+	r.nginxConfig = newFromFlags(&cmd.Flags, r.reload)
+
+	r.confAgentConfig = confagent.NewFromFlags(
+		&cmd.Flags,
+		confagent.FromFlagsNginxConfig(r.nginxConfig),
+	)
+
 	return cmd
 }
 
@@ -39,10 +50,12 @@ type runner struct {
 	ListenPort int
 	Nginx      string
 
-	managedProc proc.ManagedProc
-	adminServer adminserver.AdminServer
-	procErr     error
-	waitGroup   sync.WaitGroup
+	managedProc     proc.ManagedProc
+	adminServer     adminserver.AdminServer
+	confAgentConfig confagent.FromFlags
+	nginxConfig     *fromFlags
+	procErr         error
+	waitGroup       sync.WaitGroup
 }
 
 func (r *runner) onExit(err error) {
@@ -52,15 +65,31 @@ func (r *runner) onExit(err error) {
 }
 
 func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
-	mergedArgs := append(args, "-g", "daemon off;")
+	if err := r.confAgentConfig.Validate(); err != nil {
+		return command.BadInput(err.Error())
+	}
+
+	confAgent, err := r.confAgentConfig.Make()
+	if err != nil {
+		return command.Error(err.Error())
+	}
+
+	mergedArgs := append(args, "-c", r.nginxConfig.configFile, "-g", "daemon off;")
 
 	r.waitGroup.Add(1)
 
-	var err error
 	r.managedProc, err = proc.NewManagedProc(r.Nginx, mergedArgs, r.onExit)
 	if err != nil {
 		return command.Error(err.Error())
 	}
+
+	go func() {
+		for {
+			if err := confAgent.Poll(); err != nil {
+				fmt.Fprintf(os.Stderr, "api polling error: %s", err.Error())
+			}
+		}
+	}()
 
 	r.adminServer = adminserver.New(r.ListenIP, r.ListenPort, r.managedProc)
 
@@ -100,6 +129,14 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 	}
 
 	return command.NoError()
+}
+
+func (r *runner) reload() error {
+	if r.managedProc == nil {
+		return errors.New("no running nginx process")
+	}
+
+	return r.managedProc.Hangup()
 }
 
 func main() {
