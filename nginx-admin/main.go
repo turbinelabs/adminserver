@@ -80,7 +80,7 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 
 	r.procWaitGroup.Add(1)
 
-	r.managedProc, err = proc.NewManagedProc(r.Nginx, mergedArgs, r.onExit)
+	r.managedProc, err = proc.NewDefaultManagedProc(r.Nginx, mergedArgs, r.onExit)
 	if err != nil {
 		return command.Error(err.Error())
 	}
