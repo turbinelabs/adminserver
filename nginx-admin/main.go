@@ -55,13 +55,15 @@ type runner struct {
 	confAgentConfig confagent.FromFlags
 	nginxConfig     *fromFlags
 	procErr         error
-	waitGroup       sync.WaitGroup
+	procWaitGroup   sync.WaitGroup
 }
 
 func (r *runner) onExit(err error) {
 	r.procErr = err
-	r.adminServer.Close()
-	r.waitGroup.Done()
+	if r.adminServer != nil {
+		r.adminServer.Close()
+	}
+	r.procWaitGroup.Done()
 }
 
 func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
@@ -76,7 +78,7 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 
 	mergedArgs := append(args, "-c", r.nginxConfig.configFile, "-g", "daemon off;")
 
-	r.waitGroup.Add(1)
+	r.procWaitGroup.Add(1)
 
 	r.managedProc, err = proc.NewManagedProc(r.Nginx, mergedArgs, r.onExit)
 	if err != nil {
@@ -92,10 +94,9 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 	}()
 
 	r.adminServer = adminserver.New(r.ListenIP, r.ListenPort, r.managedProc)
-
 	err = r.adminServer.Start()
 
-	r.waitGroup.Wait()
+	r.procWaitGroup.Wait()
 
 	if r.procErr != nil {
 		// Process exited with error, but ignore signals that

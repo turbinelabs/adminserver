@@ -1,9 +1,11 @@
 package adminserver
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -49,6 +51,7 @@ type adminServer struct {
 	managedProc         proc.ManagedProc
 	listener            net.Listener
 	server              *http.Server
+	closeMutex          sync.Mutex
 }
 
 // Creates a new AdminServer on the given IP address and port,
@@ -102,16 +105,39 @@ func (adminServer *adminServer) Listening() bool {
 }
 
 func (adminServer *adminServer) Start() error {
+	// As much as possible, prevent Close() from occurring while
+	// adminServer is starting.
+	adminServer.closeMutex.Lock()
+
+	// Unlock the mutex once: either at return or just before the
+	// blocking call to Serve.
+	var unlockOnce sync.Once
+	defer func() {
+		unlockOnce.Do(adminServer.closeMutex.Unlock)
+	}()
+
+	if adminServer.server == nil {
+		return errors.New("already closed")
+	}
+
 	l, err := net.Listen("tcp", adminServer.server.Addr)
 	if err != nil {
 		return err
 	}
 
 	adminServer.listener = l
+
+	unlockOnce.Do(adminServer.closeMutex.Unlock)
 	return adminServer.server.Serve(l)
 }
 
 func (adminServer *adminServer) Close() error {
+	adminServer.closeMutex.Lock()
+	defer func() {
+		adminServer.server = nil
+		adminServer.closeMutex.Unlock()
+	}()
+
 	l := adminServer.listener
 	if l == nil {
 		return nil

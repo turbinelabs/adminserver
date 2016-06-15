@@ -82,8 +82,9 @@ func testRunWithSignal(t *testing.T, adminCmd string) {
 	resp, err := http.Get(fmt.Sprintf("http://%s/admin/%s", addr, adminCmd))
 	assert.Nil(t, err)
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
 
+	body, err := ioutil.ReadAll(resp.Body)
+	assert.Nil(t, err)
 	assert.Equal(t, string(body), "OK\n")
 
 	waitGroup.Wait()
