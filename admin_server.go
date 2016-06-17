@@ -1,5 +1,7 @@
 package adminserver
 
+//go:generate mockgen -source $GOFILE -destination mock_$GOFILE -package $GOPACKAGE
+
 import (
 	"errors"
 	"fmt"

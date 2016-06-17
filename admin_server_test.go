@@ -174,3 +174,10 @@ func TestAdminServerCannotListen(t *testing.T) {
 
 	ctrl.Finish()
 }
+
+func TestAdminServerStartAfterClose(t *testing.T) {
+	as, _, cleanup := mkAdminServer(t)
+	cleanup()
+
+	assert.NonNil(t, as.Start())
+}

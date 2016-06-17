@@ -14,12 +14,6 @@ import (
 	"github.com/turbinelabs/proc"
 )
 
-const (
-	DefaultNginxExecutable = "nginx"
-	DefaultListenIP        = "127.0.0.1"
-	DefaultListenPort      = 9000
-)
-
 func Cmd() *command.Cmd {
 	r := &runner{}
 
@@ -31,56 +25,64 @@ func Cmd() *command.Cmd {
 		Runner:      r,
 	}
 
-	cmd.Flags.StringVar(&r.ListenIP, "ip", DefaultListenIP, "What IP should we listen on")
-	cmd.Flags.IntVar(&r.ListenPort, "port", DefaultListenPort, "What port should we listen on")
-	cmd.Flags.StringVar(&r.Nginx, "nginx", DefaultNginxExecutable, "How to run nginx")
-
-	r.nginxConfig = newFromFlags(&cmd.Flags, r.reload)
-
-	r.confAgentConfig = confagent.NewFromFlags(
-		&cmd.Flags,
-		confagent.FromFlagsNginxConfig(r.nginxConfig),
-	)
+	r.config = newFromFlags(&cmd.Flags)
+	r.adminServerConfig = adminserver.NewFromFlags(&cmd.Flags)
+	r.confAgentConfig = confagent.NewFromFlags(&cmd.Flags)
 
 	return cmd
 }
 
 type runner struct {
-	ListenIP   string
-	ListenPort int
-	Nginx      string
+	config            FromFlags
+	adminServerConfig adminserver.FromFlags
+	confAgentConfig   confagent.FromFlags
 
-	managedProc     proc.ManagedProc
-	adminServer     adminserver.AdminServer
-	confAgentConfig confagent.FromFlags
-	nginxConfig     *fromFlags
-	procErr         error
-	procWaitGroup   sync.WaitGroup
-}
-
-func (r *runner) onExit(err error) {
-	r.procErr = err
-	if r.adminServer != nil {
-		r.adminServer.Close()
-	}
-	r.procWaitGroup.Done()
+	adminServerStarted bool
 }
 
 func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
+	if err := r.config.Validate(); err != nil {
+		return command.BadInput(err.Error())
+	}
+
 	if err := r.confAgentConfig.Validate(); err != nil {
 		return command.BadInput(err.Error())
 	}
 
-	confAgent, err := r.confAgentConfig.Make()
+	if err := r.adminServerConfig.Validate(); err != nil {
+		return command.BadInput(err.Error())
+	}
+
+	var managedProc proc.ManagedProc
+	reload := func() error {
+		if managedProc == nil {
+			return errors.New("no running nginx process")
+		}
+
+		return managedProc.Hangup()
+	}
+
+	confAgent, err := r.confAgentConfig.Make(r.config.MakeNginxConfig(reload))
 	if err != nil {
 		return command.Error(err.Error())
 	}
 
-	mergedArgs := append(args, "-c", r.nginxConfig.configFile, "-g", "daemon off;")
+	var adminServer adminserver.AdminServer
+	var procErr error
+	var procWaitGroup sync.WaitGroup
+	onExit := func(err error) {
+		defer procWaitGroup.Done()
+		procErr = err
+		if adminServer != nil {
+			adminServer.Close()
+		}
+	}
 
-	r.procWaitGroup.Add(1)
+	managedProc = r.config.MakeManagedProc(onExit, args)
 
-	r.managedProc, err = proc.NewDefaultManagedProc(r.Nginx, mergedArgs, r.onExit)
+	procWaitGroup.Add(1)
+
+	err = managedProc.Start()
 	if err != nil {
 		return command.Error(err.Error())
 	}
@@ -93,18 +95,19 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 		}
 	}()
 
-	r.adminServer = adminserver.New(r.ListenIP, r.ListenPort, r.managedProc)
-	err = r.adminServer.Start()
+	adminServer = r.adminServerConfig.Make(managedProc)
+	r.adminServerStarted = true
+	err = adminServer.Start()
 
-	r.procWaitGroup.Wait()
+	procWaitGroup.Wait()
 
-	if r.procErr != nil {
+	if procErr != nil {
 		// Process exited with error, but ignore signals that
 		// we sent on purpose.
-		errMsg := r.procErr.Error()
+		errMsg := procErr.Error()
 		cmdErr := command.NoError()
 
-		switch r.adminServer.LastRequestedSignal() {
+		switch adminServer.LastRequestedSignal() {
 		case adminserver.RequestedKillSignal:
 			if !strings.HasPrefix(errMsg, "signal: killed") {
 				cmdErr = command.Error(errMsg)
@@ -122,7 +125,7 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 		return cmdErr
 	}
 
-	if err != nil && !r.managedProc.Completed() {
+	if err != nil && !managedProc.Completed() {
 		// AdminServer failed to start. Ignore if process
 		// completed, because onExit may close the server
 		// before it even starts causing a spurrious error.
@@ -130,14 +133,6 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 	}
 
 	return command.NoError()
-}
-
-func (r *runner) reload() error {
-	if r.managedProc == nil {
-		return errors.New("no running nginx process")
-	}
-
-	return r.managedProc.Hangup()
 }
 
 func main() {
