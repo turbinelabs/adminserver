@@ -2,10 +2,10 @@ package main
 
 import (
 	"io/ioutil"
-	"os"
 	"testing"
 
 	"github.com/turbinelabs/test/assert"
+	"github.com/turbinelabs/test/tempfile"
 )
 
 const (
@@ -13,11 +13,8 @@ const (
 )
 
 func TestNginxConfigWrite(t *testing.T) {
-	tmp, err := ioutil.TempFile("", "nginx-admin-conf.")
-	if err != nil {
-		panic(err)
-	}
-	defer os.Remove(tmp.Name())
+	tmpName, cleanup := tempfile.Make(t, "nginx-admin-conf")
+	defer cleanup()
 
 	calls := 0
 	reload := func() error {
@@ -25,43 +22,37 @@ func TestNginxConfigWrite(t *testing.T) {
 		return nil
 	}
 
-	nx := &nginxConfig{&fromFlags{configFile: tmp.Name()}, reload}
+	nx := &nginxConfig{&fromFlags{configFile: tmpName}, reload}
 
-	err = nx.Write(configData)
+	err := nx.Write(configData)
 	assert.Nil(t, err)
 	assert.Equal(t, calls, 1)
 
-	contents, err := ioutil.ReadFile(tmp.Name())
+	contents, err := ioutil.ReadFile(tmpName)
 	assert.Nil(t, err)
 	assert.Equal(t, string(contents), configData)
 }
 
-func TestNginxNginxConfigWriteShortCircuit(t *testing.T) {
-	tmp, err := ioutil.TempFile("", "nginx-admin-conf.")
-	if err != nil {
-		panic(err)
-	}
-	defer os.Remove(tmp.Name())
-
-	err = ioutil.WriteFile(tmp.Name(), []byte(configData), 664)
-	assert.Nil(t, err)
+func TestNginxConfigWriteShortCircuit(t *testing.T) {
+	tmpName, cleanup := tempfile.Write(t, configData, "nginx-admin-conf")
+	defer cleanup()
 
 	reload := func() error {
 		assert.Tracing(t).Error("unexpected call to reload")
 		return nil
 	}
 
-	nx := &nginxConfig{&fromFlags{configFile: tmp.Name()}, reload}
+	nx := &nginxConfig{&fromFlags{configFile: tmpName}, reload}
 
-	err = nx.Write(configData)
+	err := nx.Write(configData)
 	assert.Nil(t, err)
 
-	contents, err := ioutil.ReadFile(tmp.Name())
+	contents, err := ioutil.ReadFile(tmpName)
 	assert.Nil(t, err)
 	assert.Equal(t, string(contents), configData)
 }
 
-func TestNginxNginxConfigWriteFailure(t *testing.T) {
+func TestNginxConfigWriteFailure(t *testing.T) {
 	reload := func() error {
 		assert.Tracing(t).Error("unexpected call to reload")
 		return nil

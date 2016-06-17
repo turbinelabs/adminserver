@@ -2,34 +2,13 @@ package main
 
 import (
 	"flag"
-	"io/ioutil"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/turbinelabs/test/assert"
+	"github.com/turbinelabs/test/tempfile"
 )
-
-// TODO: make this a utillity function: https://github.com/turbinelabs/tbn/issues/696
-func mkTempFileName(t *testing.T, prefix ...string) (string, func()) {
-	p := "test.tmp."
-	if len(prefix) > 0 {
-		p = strings.Join(prefix, ".")
-		if !strings.HasSuffix(p, ".") {
-			p = p + "."
-		}
-	}
-
-	f, err := ioutil.TempFile("", p)
-	if err != nil {
-		t.Fatalf("failed to create temp file for test: %v", err)
-	}
-	defer f.Close()
-
-	name := f.Name()
-	return name, func() { os.Remove(name) }
-}
 
 func TestNewFromFlags(t *testing.T) {
 	flagset := flag.NewFlagSet("fromFlag options", flag.PanicOnError)
@@ -50,7 +29,7 @@ func TestFromFlagsValidate(t *testing.T) {
 	err := ff.Validate()
 	assert.ErrorContains(t, err, "config-file does not exist")
 
-	configFile, cleanup := mkTempFileName(t, "nginx-config-file")
+	configFile, cleanup := tempfile.Make(t, "nginx-config-file")
 	defer cleanup()
 
 	ff.configFile = configFile
@@ -58,7 +37,7 @@ func TestFromFlagsValidate(t *testing.T) {
 	err = ff.Validate()
 	assert.ErrorContains(t, err, "nginx does not exist")
 
-	nginx, cleanup2 := mkTempFileName(t, "nginx-fake-bin")
+	nginx, cleanup2 := tempfile.Make(t, "nginx-fake-bin")
 	defer cleanup2()
 
 	ff.nginx = nginx
