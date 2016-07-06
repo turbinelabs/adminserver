@@ -8,6 +8,8 @@ import (
 	"os"
 
 	"github.com/turbinelabs/agent/confagent/nginxconfig"
+	"github.com/turbinelabs/logparser"
+	"github.com/turbinelabs/logparser/metric"
 	"github.com/turbinelabs/proc"
 )
 
@@ -20,13 +22,17 @@ type reloader func() error
 
 type FromFlags interface {
 	Validate() error
+
+	Source() metric.MetricSource
 	MakeNginxConfig(reload reloader) nginxconfig.NginxConfig
 	MakeManagedProc(onExit func(error), args []string) proc.ManagedProc
 }
 
 type fromFlags struct {
-	configFile string
-	nginx      string
+	configFile   string
+	nginx        string
+	source       string
+	metricPrefix string
 }
 
 func newFromFlags(flagset *flag.FlagSet) FromFlags {
@@ -40,10 +46,26 @@ func newFromFlags(flagset *flag.FlagSet) FromFlags {
 
 	flagset.StringVar(&ff.nginx, "nginx", DefaultNginxExecutable, "How to run nginx")
 
+	flagset.StringVar(
+		&ff.source,
+		"source",
+		logparser.DefaultSource(),
+		"Sets the default source `tag` for all forwarded metrics.")
+
+	flagset.StringVar(
+		&ff.metricPrefix,
+		"metric.prefix",
+		"",
+		"Sets a `prefix` for all forwarded metrics.")
+
 	return ff
 }
 
 func (ff *fromFlags) Validate() error {
+	if _, err := metric.NewSource(ff.source, ff.metricPrefix); err != nil {
+		return err
+	}
+
 	if _, err := os.Stat(ff.configFile); os.IsNotExist(err) {
 		return fmt.Errorf("config-file does not exist: %s", ff.configFile)
 	}
@@ -53,6 +75,11 @@ func (ff *fromFlags) Validate() error {
 	}
 
 	return nil
+}
+
+func (ff *fromFlags) Source() metric.MetricSource {
+	source, _ := metric.NewSource(ff.source, ff.metricPrefix)
+	return source
 }
 
 func (ff *fromFlags) MakeNginxConfig(reload reloader) nginxconfig.NginxConfig {

@@ -11,6 +11,9 @@ import (
 	"github.com/turbinelabs/agent/confagent"
 	"github.com/turbinelabs/cli"
 	"github.com/turbinelabs/cli/command"
+	"github.com/turbinelabs/logparser"
+	"github.com/turbinelabs/logparser/forwarder"
+	"github.com/turbinelabs/logparser/parser"
 	"github.com/turbinelabs/proc"
 )
 
@@ -29,29 +32,55 @@ func Cmd() *command.Cmd {
 	r.adminServerConfig = adminserver.NewFromFlags(&cmd.Flags)
 	r.confAgentConfig = confagent.NewFromFlags(&cmd.Flags)
 
+	r.accessLogParserConfig = logparser.NewFromFlagsWithDefaults(
+		&cmd.Flags,
+		"accesslog",
+		parser.NoopParserType,
+		forwarder.NoopForwarderType,
+	)
+
+	r.upstreamLogParserConfig = logparser.NewFromFlagsWithDefaults(
+		&cmd.Flags,
+		"upstreamlog",
+		parser.NoopParserType,
+		forwarder.NoopForwarderType,
+	)
+
 	return cmd
 }
 
 type runner struct {
-	config            FromFlags
-	adminServerConfig adminserver.FromFlags
-	confAgentConfig   confagent.FromFlags
+	config                  FromFlags
+	adminServerConfig       adminserver.FromFlags
+	confAgentConfig         confagent.FromFlags
+	accessLogParserConfig   logparser.FromFlags
+	upstreamLogParserConfig logparser.FromFlags
 
 	adminServerStarted bool
 }
 
 func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 	if err := r.config.Validate(); err != nil {
-		return command.BadInput(err.Error())
+		return cmd.BadInput(err)
 	}
 
 	if err := r.confAgentConfig.Validate(); err != nil {
-		return command.BadInput(err.Error())
+		return cmd.BadInput(err)
 	}
 
 	if err := r.adminServerConfig.Validate(); err != nil {
-		return command.BadInput(err.Error())
+		return cmd.BadInput(err)
 	}
+
+	if err := r.accessLogParserConfig.Validate(); err != nil {
+		return cmd.BadInput(err)
+	}
+
+	if err := r.upstreamLogParserConfig.Validate(); err != nil {
+		return cmd.BadInput(err)
+	}
+
+	source := r.config.Source()
 
 	var managedProc proc.ManagedProc
 	reload := func() error {
@@ -64,7 +93,7 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 
 	confAgent, err := r.confAgentConfig.Make(r.config.MakeNginxConfig(reload))
 	if err != nil {
-		return command.Error(err.Error())
+		return cmd.Error(err)
 	}
 
 	var adminServer adminserver.AdminServer
@@ -84,8 +113,9 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 
 	err = managedProc.Start()
 	if err != nil {
-		return command.Error(err.Error())
+		return cmd.Error(err)
 	}
+	defer managedProc.Kill()
 
 	go func() {
 		for {
@@ -94,6 +124,20 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 			}
 		}
 	}()
+
+	accessLogParser, err := r.accessLogParserConfig.Make(logparser.DefaultLogger(), source)
+	if err != nil {
+		return cmd.Error(err)
+	}
+	defer accessLogParser.Close()
+	startTail(accessLogParser, confAgent.GetPaths().AccessLog)
+
+	upstreamLogParser, err := r.upstreamLogParserConfig.Make(logparser.DefaultLogger(), source)
+	if err != nil {
+		return cmd.Error(err)
+	}
+	defer upstreamLogParser.Close()
+	startTail(upstreamLogParser, confAgent.GetPaths().UpstreamLog)
 
 	adminServer = r.adminServerConfig.Make(managedProc)
 	r.adminServerStarted = true
@@ -110,16 +154,16 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 		switch adminServer.LastRequestedSignal() {
 		case adminserver.RequestedKillSignal:
 			if !strings.HasPrefix(errMsg, "signal: killed") {
-				cmdErr = command.Error(errMsg)
+				cmdErr = cmd.Error(errMsg)
 			}
 
 		case adminserver.RequestedQuitSignal:
 			if !strings.HasPrefix(errMsg, "signal: quit") {
-				cmdErr = command.Error(errMsg)
+				cmdErr = cmd.Error(errMsg)
 			}
 
 		default:
-			cmdErr = command.Error(errMsg)
+			cmdErr = cmd.Error(errMsg)
 		}
 
 		return cmdErr
@@ -129,10 +173,15 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 		// AdminServer failed to start. Ignore if process
 		// completed, because onExit may close the server
 		// before it even starts causing a spurrious error.
-		return command.Error(err.Error())
+		return cmd.Error(err)
 	}
 
 	return command.NoError()
+}
+
+func startTail(logParser logparser.LogParser, path string) {
+	// TODO: #770: should rotate log file to avoid re-parsing old data
+	go logParser.Tail(path)
 }
 
 func main() {

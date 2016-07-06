@@ -12,6 +12,9 @@ import (
 	"github.com/turbinelabs/agent/confagent"
 	"github.com/turbinelabs/agent/confagent/nginxconfig"
 	"github.com/turbinelabs/cli/command"
+	"github.com/turbinelabs/configwriter"
+	"github.com/turbinelabs/logparser"
+	"github.com/turbinelabs/logparser/metric"
 	"github.com/turbinelabs/proc"
 	"github.com/turbinelabs/test/assert"
 )
@@ -24,20 +27,95 @@ func dummyReloadFunc() error {
 	return nil
 }
 
-type runnerTestCase struct {
-	ctrl        *gomock.Controller
-	runner      *runner
-	adminServer *adminserver.MockAdminServer
-	managedProc *proc.MockManagedProc
+type runnerConfig struct {
+	args []string
 
-	onExit func(error)
-	reload reloader
+	mainValidateErr  error
+	mainMakeNginxErr error
+	mainMakeProcErr  error
+
+	procStartErr error
+
+	confAgentValidateErr error
+	confAgentMakeErr     error
+
+	accessLogParserValidateErr error
+	accessLogParserMakeErr     error
+
+	upstreamLogParserValidateErr error
+	upstreamLogParserMakeErr     error
+
+	adminServerValidateErr error
+	adminServerStartErr    error
 }
 
-func mkMockRunner(t *testing.T, args []string) *runnerTestCase {
+type runnerTestCase struct {
+	args                []string
+	t                   *testing.T
+	ctrl                *gomock.Controller
+	runner              *runner
+	adminServer         *adminserver.MockAdminServer
+	managedProc         *proc.MockManagedProc
+	accessLogParser     *logparser.MockLogParser
+	accessLogTailDone   bool
+	upstreamLogParser   *logparser.MockLogParser
+	upstreamLogTailDone bool
+	onExit              func(error)
+	reload              reloader
+}
+
+func (tc *runnerTestCase) start() (wait func() command.CmdErr) {
+	var waitGroup sync.WaitGroup
+	var cmdErr command.CmdErr
+
+	runnerDone := false
+	onRunnerDone := func() {
+		waitGroup.Done()
+		runnerDone = true
+	}
+
+	waitGroup.Add(1)
+	go func() {
+		// Mock errors result in a call to runtime.Goexit
+		// (stops execution, triggers deferred functions, is
+		// not a panic)
+		defer onRunnerDone()
+		cmdErr = tc.runner.Run(Cmd(), tc.args)
+	}()
+
+	for !tc.runner.adminServerStarted && !runnerDone {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if !tc.runner.adminServerStarted {
+		tc.t.Fatal("admin server didn't start (mock errors?)")
+	}
+
+	limit := 5 * time.Second
+	start := time.Now()
+	for (!tc.accessLogTailDone || !tc.upstreamLogTailDone) && time.Since(start) < limit {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	return func() command.CmdErr {
+		waitGroup.Wait()
+		return cmdErr
+	}
+}
+
+func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase) {
 	ctrl := gomock.NewController(assert.Tracing(t))
 
-	testcase := &runnerTestCase{}
+	if config.args == nil {
+		config.args = []string{}
+	}
+
+	testcase = &runnerTestCase{
+		t:                   t,
+		args:                config.args,
+		accessLogTailDone:   true,
+		upstreamLogTailDone: true,
+	}
 
 	recordOnExit := func(onExit func(error), args []string) {
 		testcase.onExit = onExit
@@ -47,6 +125,11 @@ func mkMockRunner(t *testing.T, args []string) *runnerTestCase {
 		testcase.reload = reload
 	}
 
+	source, err := metric.NewSource(logparser.DefaultSource(), "")
+	if !assert.Nil(t, err) {
+		t.FailNow()
+	}
+
 	mainFromFlags := NewMockFromFlags(ctrl)
 	managedProc := proc.NewMockManagedProc(ctrl)
 	nginxConfig := nginxconfig.NewMockNginxConfig(ctrl)
@@ -54,53 +137,187 @@ func mkMockRunner(t *testing.T, args []string) *runnerTestCase {
 	confAgentFromFlags := confagent.NewMockFromFlags(ctrl)
 	confAgent := confagent.NewMockConfAgent(ctrl)
 
+	accessLogParserFromFlags := logparser.NewMockFromFlags(ctrl)
+	accessLogParser := logparser.NewMockLogParser(ctrl)
+
+	upstreamLogParserFromFlags := logparser.NewMockFromFlags(ctrl)
+	upstreamLogParser := logparser.NewMockLogParser(ctrl)
+
 	adminServerFromFlags := adminserver.NewMockFromFlags(ctrl)
 	adminServer := adminserver.NewMockAdminServer(ctrl)
 
-	mainFromFlags.EXPECT().Validate().Return(nil)
-	confAgentFromFlags.EXPECT().Validate().Return(nil)
-	adminServerFromFlags.EXPECT().Validate().Return(nil)
-
-	mainFromFlags.EXPECT().
-		MakeNginxConfig(gomock.Any()).
-		Do(recordReload).
-		Return(nginxConfig)
-
-	confAgentFromFlags.EXPECT().Make(nginxConfig).Return(confAgent, nil)
-
-	mainFromFlags.EXPECT().
-		MakeManagedProc(gomock.Any(), args).
-		Do(recordOnExit).
-		Return(managedProc)
-
-	adminServerFromFlags.EXPECT().Make(managedProc).Return(adminServer)
-
-	confAgent.EXPECT().Poll().AnyTimes().Return(nil)
-
 	runner := &runner{
-		config:            mainFromFlags,
-		adminServerConfig: adminServerFromFlags,
-		confAgentConfig:   confAgentFromFlags,
+		config:                  mainFromFlags,
+		adminServerConfig:       adminServerFromFlags,
+		confAgentConfig:         confAgentFromFlags,
+		accessLogParserConfig:   accessLogParserFromFlags,
+		upstreamLogParserConfig: upstreamLogParserFromFlags,
 	}
 
 	testcase.ctrl = ctrl
 	testcase.runner = runner
 	testcase.adminServer = adminServer
 	testcase.managedProc = managedProc
+	testcase.accessLogParser = accessLogParser
+	testcase.upstreamLogParser = upstreamLogParser
 
-	return testcase
+	calls := []*gomock.Call{}
+	deferredCalls := []*gomock.Call{}
+	defer func() {
+		for i := len(deferredCalls) - 1; i >= 0; i-- {
+			calls = append(calls, deferredCalls[i])
+		}
+
+		gomock.InOrder(calls...)
+	}()
+
+	calls = append(calls, mainFromFlags.EXPECT().Validate().Return(config.mainValidateErr))
+	if config.mainValidateErr != nil {
+		return
+	}
+
+	calls = append(
+		calls,
+		confAgentFromFlags.EXPECT().Validate().Return(config.confAgentValidateErr),
+	)
+	if config.confAgentValidateErr != nil {
+		return
+	}
+
+	calls = append(
+		calls,
+		adminServerFromFlags.EXPECT().Validate().Return(config.adminServerValidateErr),
+	)
+	if config.adminServerValidateErr != nil {
+		return
+	}
+
+	calls = append(
+		calls,
+		accessLogParserFromFlags.EXPECT().
+			Validate().
+			Return(config.accessLogParserValidateErr),
+	)
+	if config.accessLogParserValidateErr != nil {
+		return
+	}
+
+	calls = append(
+		calls,
+		upstreamLogParserFromFlags.EXPECT().
+			Validate().
+			Return(config.upstreamLogParserValidateErr),
+	)
+	if config.upstreamLogParserValidateErr != nil {
+		return
+	}
+
+	calls = append(
+		calls,
+		mainFromFlags.EXPECT().Source().Return(source),
+		mainFromFlags.EXPECT().
+			MakeNginxConfig(gomock.Any()).
+			Do(recordReload).
+			Return(nginxConfig),
+	)
+
+	if config.confAgentMakeErr == nil {
+		calls = append(
+			calls,
+			confAgentFromFlags.EXPECT().Make(nginxConfig).Return(confAgent, nil),
+		)
+	} else {
+		calls = append(
+			calls,
+			confAgentFromFlags.EXPECT().
+				Make(nginxConfig).
+				Return(nil, config.confAgentMakeErr),
+		)
+		return
+	}
+
+	calls = append(
+		calls,
+		mainFromFlags.EXPECT().
+			MakeManagedProc(gomock.Any(), config.args).
+			Do(recordOnExit).
+			Return(managedProc),
+		managedProc.EXPECT().Start().Return(config.procStartErr),
+	)
+	if config.procStartErr != nil {
+		return
+	}
+
+	deferredCalls = append(deferredCalls, managedProc.EXPECT().Kill().Return(nil))
+
+	// may be out of order
+	confAgent.EXPECT().Poll().AnyTimes().Return(nil)
+
+	paths := configwriter.Paths{AccessLog: "the-access-log", UpstreamLog: "the-upstream-log"}
+
+	if config.accessLogParserMakeErr == nil {
+		calls = append(
+			calls,
+			accessLogParserFromFlags.EXPECT().
+				Make(gomock.Any(), source).
+				Return(accessLogParser, nil),
+			confAgent.EXPECT().GetPaths().Return(paths),
+		)
+	} else {
+		calls = append(
+			calls,
+			accessLogParserFromFlags.EXPECT().
+				Make(gomock.Any(), source).
+				Return(nil, config.accessLogParserMakeErr),
+		)
+		return
+	}
+
+	deferredCalls = append(deferredCalls, accessLogParser.EXPECT().Close().Return(nil))
+
+	// may be out of order
+	testcase.accessLogTailDone = false
+	accessLogParser.EXPECT().Tail(paths.AccessLog).Do(func(_ string) {
+		testcase.accessLogTailDone = true
+	}).Return(nil)
+
+	if config.upstreamLogParserMakeErr == nil {
+		calls = append(
+			calls,
+			upstreamLogParserFromFlags.EXPECT().
+				Make(gomock.Any(), source).
+				Return(upstreamLogParser, nil),
+			confAgent.EXPECT().GetPaths().Return(paths),
+		)
+	} else {
+		calls = append(
+			calls,
+			upstreamLogParserFromFlags.EXPECT().
+				Make(gomock.Any(), source).
+				Return(nil, config.upstreamLogParserMakeErr),
+		)
+		return
+	}
+
+	deferredCalls = append(deferredCalls, upstreamLogParser.EXPECT().Close().Return(nil))
+
+	// may be out of order
+	testcase.upstreamLogTailDone = false
+	upstreamLogParser.EXPECT().Tail(paths.UpstreamLog).Do(func(_ string) {
+		testcase.upstreamLogTailDone = true
+	}).Return(nil)
+
+	calls = append(
+		calls,
+		adminServerFromFlags.EXPECT().Make(managedProc).Return(adminServer),
+		adminServer.EXPECT().Start().Return(config.adminServerStartErr),
+	)
+
+	return
 }
 
 func testRunWithSignal(t *testing.T, adminCmd string, wrongProcErr bool) {
-	var waitGroup sync.WaitGroup
-
-	args := []string{"a", "b", "c"}
-
-	test := mkMockRunner(t, args)
-
-	test.managedProc.EXPECT().Start().Return(nil)
-
-	test.adminServer.EXPECT().Start().Return(nil)
+	test := mkMockRunner(t, &runnerConfig{args: []string{"a", "b", "c"}})
 
 	var exitError string
 	if adminCmd == "quit" {
@@ -119,16 +336,7 @@ func testRunWithSignal(t *testing.T, adminCmd string, wrongProcErr bool) {
 
 	test.adminServer.EXPECT().Close().Return(nil)
 
-	var cmdErr command.CmdErr
-	waitGroup.Add(1)
-	go func() {
-		defer waitGroup.Done()
-		cmdErr = test.runner.Run(Cmd(), args)
-	}()
-
-	for !test.runner.adminServerStarted {
-		time.Sleep(10 * time.Millisecond)
-	}
+	wait := test.start()
 
 	if wrongProcErr {
 		test.onExit(errors.New("unexpected error"))
@@ -136,10 +344,10 @@ func testRunWithSignal(t *testing.T, adminCmd string, wrongProcErr bool) {
 		test.onExit(errors.New(exitError))
 	}
 
-	waitGroup.Wait()
+	cmdErr := wait()
 
 	if wrongProcErr {
-		assert.DeepEqual(t, cmdErr, command.Errorf("unexpected error"))
+		assert.Equal(t, cmdErr.Message, "nginx-admin: unexpected error")
 	} else {
 		assert.DeepEqual(t, cmdErr, command.NoError())
 	}
@@ -178,29 +386,15 @@ func TestRunWithKillReturningWrongError(t *testing.T) {
 }
 
 func TestRunProcExitsNormally(t *testing.T) {
-	var waitGroup sync.WaitGroup
+	test := mkMockRunner(t, &runnerConfig{})
 
-	test := mkMockRunner(t, []string{})
-
-	test.managedProc.EXPECT().Start().Return(nil)
-
-	test.adminServer.EXPECT().Start().Return(nil)
 	test.adminServer.EXPECT().Close().Return(nil)
 
-	var cmdErr command.CmdErr
-	waitGroup.Add(1)
-	go func() {
-		defer waitGroup.Done()
-		cmdErr = test.runner.Run(Cmd(), []string{})
-	}()
-
-	for !test.runner.adminServerStarted {
-		time.Sleep(10 * time.Millisecond)
-	}
+	wait := test.start()
 
 	test.onExit(nil)
 
-	waitGroup.Wait()
+	cmdErr := wait()
 
 	assert.DeepEqual(t, cmdErr, command.NoError())
 
@@ -208,29 +402,16 @@ func TestRunProcExitsNormally(t *testing.T) {
 }
 
 func TestRunProcExitsWithFailure(t *testing.T) {
-	var waitGroup sync.WaitGroup
+	test := mkMockRunner(t, &runnerConfig{})
 
-	test := mkMockRunner(t, []string{})
-
-	test.managedProc.EXPECT().Start().Return(nil)
-	test.adminServer.EXPECT().Start().Return(nil)
 	test.adminServer.EXPECT().LastRequestedSignal().Return(adminserver.NoRequestedSignal)
 	test.adminServer.EXPECT().Close().Return(nil)
 
-	var cmdErr command.CmdErr
-	waitGroup.Add(1)
-	go func() {
-		defer waitGroup.Done()
-		cmdErr = test.runner.Run(Cmd(), []string{})
-	}()
-
-	for !test.runner.adminServerStarted {
-		time.Sleep(10 * time.Millisecond)
-	}
+	wait := test.start()
 
 	test.onExit(errors.New("boom: exit status 1"))
 
-	waitGroup.Wait()
+	cmdErr := wait()
 
 	assert.NotDeepEqual(t, cmdErr, command.NoError())
 	assert.MatchesRegex(t, cmdErr.Message, "exit status 1")
@@ -239,204 +420,132 @@ func TestRunProcExitsWithFailure(t *testing.T) {
 }
 
 func TestRunProcExitsWithBadCommand(t *testing.T) {
-	args := []string{"a", "b"}
-	ctrl := gomock.NewController(assert.Tracing(t))
-
-	mainFromFlags := NewMockFromFlags(ctrl)
-	managedProc := proc.NewMockManagedProc(ctrl)
-	nginxConfig := nginxconfig.NewMockNginxConfig(ctrl)
-
-	confAgentFromFlags := confagent.NewMockFromFlags(ctrl)
-	confAgent := confagent.NewMockConfAgent(ctrl)
-
-	adminServerFromFlags := adminserver.NewMockFromFlags(ctrl)
-
-	mainFromFlags.EXPECT().Validate().Return(nil)
-	confAgentFromFlags.EXPECT().Validate().Return(nil)
-	adminServerFromFlags.EXPECT().Validate().Return(nil)
-
-	mainFromFlags.EXPECT().MakeNginxConfig(gomock.Any()).Return(nginxConfig)
-	confAgentFromFlags.EXPECT().Make(nginxConfig).Return(confAgent, nil)
-	mainFromFlags.EXPECT().MakeManagedProc(gomock.Any(), args).Return(managedProc)
-
-	managedProc.EXPECT().Start().Return(errors.New("file not found"))
-
-	runner := &runner{
-		config:            mainFromFlags,
-		adminServerConfig: adminServerFromFlags,
-		confAgentConfig:   confAgentFromFlags,
+	testConfig := &runnerConfig{
+		args:         []string{"a", "b"},
+		procStartErr: errors.New("file not found"),
 	}
+	test := mkMockRunner(t, testConfig)
 
-	cmdErr := runner.Run(Cmd(), args)
+	cmdErr := test.runner.Run(Cmd(), test.args)
 	assert.NotDeepEqual(t, cmdErr, command.NoError())
 	assert.MatchesRegex(t, cmdErr.Message, "not found")
 
-	ctrl.Finish()
+	test.ctrl.Finish()
 }
 
 func TestRunProcExitsWithInvalidConfig(t *testing.T) {
-	ctrl := gomock.NewController(assert.Tracing(t))
-
-	mainFromFlags := NewMockFromFlags(ctrl)
-	mainFromFlags.EXPECT().Validate().Return(errors.New("boom"))
-
-	runner := &runner{
-		config: mainFromFlags,
-	}
-
-	args := []string{}
-
-	cmdErr := runner.Run(Cmd(), args)
+	test := mkMockRunner(t, &runnerConfig{mainValidateErr: errors.New("boom")})
+	cmdErr := test.runner.Run(Cmd(), test.args)
 	assert.NotDeepEqual(t, cmdErr, command.NoError())
 	assert.MatchesRegex(t, cmdErr.Message, "boom")
 
-	ctrl.Finish()
+	test.ctrl.Finish()
 }
 
 func TestRunProcExitsWithInvalidConfAgent(t *testing.T) {
-	ctrl := gomock.NewController(assert.Tracing(t))
-
-	mainFromFlags := NewMockFromFlags(ctrl)
-	mainFromFlags.EXPECT().Validate().Return(nil)
-
-	confAgentFromFlags := confagent.NewMockFromFlags(ctrl)
-	confAgentFromFlags.EXPECT().Validate().Return(errors.New("boom"))
-
-	runner := &runner{
-		config:          mainFromFlags,
-		confAgentConfig: confAgentFromFlags,
-	}
-
-	args := []string{}
-
-	cmdErr := runner.Run(Cmd(), args)
+	test := mkMockRunner(t, &runnerConfig{confAgentValidateErr: errors.New("boom")})
+	cmdErr := test.runner.Run(Cmd(), test.args)
 	assert.NotDeepEqual(t, cmdErr, command.NoError())
 	assert.MatchesRegex(t, cmdErr.Message, "boom")
 
-	ctrl.Finish()
+	test.ctrl.Finish()
 }
 
 func TestRunProcExitsWithInvalidAdminServer(t *testing.T) {
-	ctrl := gomock.NewController(assert.Tracing(t))
-
-	mainFromFlags := NewMockFromFlags(ctrl)
-	mainFromFlags.EXPECT().Validate().Return(nil)
-
-	confAgentFromFlags := confagent.NewMockFromFlags(ctrl)
-	confAgentFromFlags.EXPECT().Validate().Return(nil)
-
-	adminServerFromFlags := adminserver.NewMockFromFlags(ctrl)
-	adminServerFromFlags.EXPECT().Validate().Return(errors.New("boom"))
-
-	runner := &runner{
-		config:            mainFromFlags,
-		adminServerConfig: adminServerFromFlags,
-		confAgentConfig:   confAgentFromFlags,
-	}
-
-	args := []string{}
-
-	cmdErr := runner.Run(Cmd(), args)
+	test := mkMockRunner(t, &runnerConfig{adminServerValidateErr: errors.New("boom")})
+	cmdErr := test.runner.Run(Cmd(), test.args)
 	assert.NotDeepEqual(t, cmdErr, command.NoError())
 	assert.MatchesRegex(t, cmdErr.Message, "boom")
 
-	ctrl.Finish()
+	test.ctrl.Finish()
+}
+
+func TestRunProcExistsWithInvalidAccessLogConfig(t *testing.T) {
+	test := mkMockRunner(t, &runnerConfig{accessLogParserValidateErr: errors.New("boom")})
+	cmdErr := test.runner.Run(Cmd(), test.args)
+	assert.NotDeepEqual(t, cmdErr, command.NoError())
+	assert.MatchesRegex(t, cmdErr.Message, "boom")
+
+	test.ctrl.Finish()
+}
+
+func TestRunProcExistsWithInvalidUpstreamLogConfig(t *testing.T) {
+	test := mkMockRunner(t, &runnerConfig{upstreamLogParserValidateErr: errors.New("boom")})
+	cmdErr := test.runner.Run(Cmd(), test.args)
+	assert.NotDeepEqual(t, cmdErr, command.NoError())
+	assert.MatchesRegex(t, cmdErr.Message, "boom")
+
+	test.ctrl.Finish()
 }
 
 func TestRunExitsWithConfAgentMakeError(t *testing.T) {
-	ctrl := gomock.NewController(assert.Tracing(t))
-
-	mainFromFlags := NewMockFromFlags(ctrl)
-	mainFromFlags.EXPECT().Validate().Return(nil)
-
-	nginxConfig := nginxconfig.NewMockNginxConfig(ctrl)
-	mainFromFlags.EXPECT().MakeNginxConfig(gomock.Any()).Return(nginxConfig)
-
-	confAgentFromFlags := confagent.NewMockFromFlags(ctrl)
-	confAgentFromFlags.EXPECT().Validate().Return(nil)
-	confAgentFromFlags.EXPECT().Make(nginxConfig).Return(nil, errors.New("make error"))
-
-	adminServerFromFlags := adminserver.NewMockFromFlags(ctrl)
-	adminServerFromFlags.EXPECT().Validate().Return(nil)
-
-	runner := &runner{
-		config:            mainFromFlags,
-		adminServerConfig: adminServerFromFlags,
-		confAgentConfig:   confAgentFromFlags,
-	}
-
-	args := []string{}
-
-	cmdErr := runner.Run(Cmd(), args)
+	test := mkMockRunner(t, &runnerConfig{confAgentMakeErr: errors.New("make error")})
+	cmdErr := test.runner.Run(Cmd(), test.args)
 	assert.NotDeepEqual(t, cmdErr, command.NoError())
 	assert.MatchesRegex(t, cmdErr.Message, "make error")
 
-	ctrl.Finish()
+	test.ctrl.Finish()
 }
 
-func TestRunAdminServerFailsToStart(t *testing.T) {
-	var waitGroup sync.WaitGroup
+func TestRunExitsWithAccessLogParserMakeError(t *testing.T) {
+	test := mkMockRunner(t, &runnerConfig{accessLogParserMakeErr: errors.New("make error")})
+	cmdErr := test.runner.Run(Cmd(), test.args)
+	assert.NotDeepEqual(t, cmdErr, command.NoError())
+	assert.MatchesRegex(t, cmdErr.Message, "make error")
 
-	test := mkMockRunner(t, []string{})
+	test.ctrl.Finish()
+}
 
-	test.managedProc.EXPECT().Start().Return(nil)
-	test.managedProc.EXPECT().Completed().Return(false)
+func TestRunExitsWithUpstreamLogParserMakeError(t *testing.T) {
+	test := mkMockRunner(t, &runnerConfig{upstreamLogParserMakeErr: errors.New("make error")})
+	cmdErr := test.runner.Run(Cmd(), test.args)
 
-	test.adminServer.EXPECT().Start().Return(errors.New("something something network"))
-	test.adminServer.EXPECT().Close().Return(nil)
-
-	var cmdErr command.CmdErr
-	waitGroup.Add(1)
-	go func() {
-		defer waitGroup.Done()
-		cmdErr = test.runner.Run(Cmd(), []string{})
-	}()
-
-	for !test.runner.adminServerStarted {
+	limit := 5 * time.Second
+	start := time.Now()
+	for !test.accessLogTailDone && time.Since(start) < limit {
 		time.Sleep(10 * time.Millisecond)
 	}
 
+	assert.NotDeepEqual(t, cmdErr, command.NoError())
+	assert.MatchesRegex(t, cmdErr.Message, "make error")
+
+	test.ctrl.Finish()
+}
+
+func TestRunAdminServerFailsToStart(t *testing.T) {
+	test := mkMockRunner(
+		t,
+		&runnerConfig{adminServerStartErr: errors.New("something something network")},
+	)
+
+	test.managedProc.EXPECT().Completed().Return(false)
+	test.adminServer.EXPECT().Close().Return(nil)
+
+	wait := test.start()
+
 	test.onExit(nil) // process exits without error
 
-	waitGroup.Wait()
+	cmdErr := wait()
 
 	assert.NotDeepEqual(t, cmdErr, command.NoError())
-	assert.Equal(t, cmdErr.Message, "something something network")
+	assert.Equal(t, cmdErr.Message, "nginx-admin: something something network")
 
 	test.ctrl.Finish()
 }
 
 func TestRunnerReload(t *testing.T) {
-	var waitGroup sync.WaitGroup
+	test := mkMockRunner(t, &runnerConfig{args: []string{"a", "b", "c"}})
 
-	args := []string{"a", "b", "c"}
-
-	test := mkMockRunner(t, args)
-
-	test.managedProc.EXPECT().Start().Return(nil)
-
-	test.adminServer.EXPECT().Start().Return(nil)
-
-	var cmdErr command.CmdErr
-	waitGroup.Add(1)
-	go func() {
-		defer waitGroup.Done()
-		cmdErr = test.runner.Run(Cmd(), args)
-	}()
-
-	for !test.runner.adminServerStarted {
-		time.Sleep(10 * time.Millisecond)
-	}
+	wait := test.start()
 
 	test.managedProc.EXPECT().Hangup().Return(nil)
-
 	test.reload()
 
 	test.adminServer.EXPECT().Close().Return(nil)
 
 	test.onExit(nil)
 
-	waitGroup.Wait()
+	wait()
 
 	test.ctrl.Finish()
 }

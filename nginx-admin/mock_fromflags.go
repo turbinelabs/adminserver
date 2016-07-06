@@ -6,6 +6,7 @@ package main
 import (
 	gomock "github.com/golang/mock/gomock"
 	nginxconfig "github.com/turbinelabs/agent/confagent/nginxconfig"
+	metric "github.com/turbinelabs/logparser/metric"
 	proc "github.com/turbinelabs/proc"
 )
 
@@ -38,6 +39,16 @@ func (_m *MockFromFlags) Validate() error {
 
 func (_mr *_MockFromFlagsRecorder) Validate() *gomock.Call {
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "Validate")
+}
+
+func (_m *MockFromFlags) Source() metric.MetricSource {
+	ret := _m.ctrl.Call(_m, "Source")
+	ret0, _ := ret[0].(metric.MetricSource)
+	return ret0
+}
+
+func (_mr *_MockFromFlagsRecorder) Source() *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "Source")
 }
 
 func (_m *MockFromFlags) MakeNginxConfig(reload reloader) nginxconfig.NginxConfig {

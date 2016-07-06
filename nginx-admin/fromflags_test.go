@@ -25,8 +25,12 @@ func TestNewFromFlags(t *testing.T) {
 
 func TestFromFlagsValidate(t *testing.T) {
 	ff := &fromFlags{}
-	ff.configFile = "/nope/nope/nope"
 	err := ff.Validate()
+	assert.ErrorContains(t, err, "invalid metric source")
+
+	ff.source = "src"
+	ff.configFile = "/nope/nope/nope"
+	err = ff.Validate()
 	assert.ErrorContains(t, err, "config-file does not exist")
 
 	configFile, cleanup := tempfile.Make(t, "nginx-config-file")
@@ -43,6 +47,23 @@ func TestFromFlagsValidate(t *testing.T) {
 	ff.nginx = nginx
 	err = ff.Validate()
 	assert.Nil(t, err)
+}
+
+func TestFromFlagsSource(t *testing.T) {
+	ff := &fromFlags{source: "s"}
+
+	source := ff.Source()
+	assert.Equal(t, source.Source(), "s")
+	metric, err := source.NewMetric("m")
+	assert.Nil(t, err)
+	assert.Equal(t, metric.Name(), "m")
+
+	ff.metricPrefix = "p"
+	source = ff.Source()
+	assert.Equal(t, source.Source(), "s")
+	metric, err = source.NewMetric("m")
+	assert.Nil(t, err)
+	assert.Equal(t, metric.Name(), "p.m")
 }
 
 func TestFromFlagsMakeNginxConfig(t *testing.T) {
