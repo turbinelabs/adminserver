@@ -11,6 +11,7 @@ import (
 	"github.com/turbinelabs/agent/confagent"
 	"github.com/turbinelabs/cli"
 	"github.com/turbinelabs/cli/command"
+	"github.com/turbinelabs/cli/flags"
 	"github.com/turbinelabs/logparser"
 	"github.com/turbinelabs/logparser/forwarder"
 	"github.com/turbinelabs/logparser/parser"
@@ -33,15 +34,21 @@ func Cmd() *command.Cmd {
 	r.confAgentConfig = confagent.NewFromFlags(&cmd.Flags)
 
 	r.accessLogParserConfig = logparser.NewFromFlagsWithDefaults(
-		&cmd.Flags,
-		"accesslog",
+		flags.NewPrefixedFlagSet(
+			&cmd.Flags,
+			"accesslog",
+			"access log",
+		),
 		parser.NoopParserType,
 		forwarder.NoopForwarderType,
 	)
 
 	r.upstreamLogParserConfig = logparser.NewFromFlagsWithDefaults(
-		&cmd.Flags,
-		"upstreamlog",
+		flags.NewPrefixedFlagSet(
+			&cmd.Flags,
+			"upstreamlog",
+			"upstream log",
+		),
 		parser.NoopParserType,
 		forwarder.NoopForwarderType,
 	)
