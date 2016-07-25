@@ -191,7 +191,10 @@ func startTail(logParser logparser.LogParser, path string) {
 	go logParser.Tail(path)
 }
 
+func mkCLI() cli.CLI {
+	return cli.New("0.1", Cmd())
+}
+
 func main() {
-	app := cli.New("0.1", Cmd())
-	app.Main()
+	mkCLI().Main()
 }

@@ -355,6 +355,10 @@ func testRunWithSignal(t *testing.T, adminCmd string, wrongProcErr bool) {
 	test.ctrl.Finish()
 }
 
+func TestCLI(t *testing.T) {
+	assert.Nil(t, mkCLI().Validate())
+}
+
 func TestCmd(t *testing.T) {
 	cmd := Cmd()
 	cmd.Flags.Parse(
