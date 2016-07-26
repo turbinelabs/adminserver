@@ -9,6 +9,7 @@ import (
 
 	"github.com/turbinelabs/adminserver"
 	"github.com/turbinelabs/agent/confagent"
+	apiflags "github.com/turbinelabs/api/service/http/flags"
 	"github.com/turbinelabs/cli"
 	"github.com/turbinelabs/cli/command"
 	"github.com/turbinelabs/cli/flags"
@@ -30,27 +31,30 @@ func Cmd() *command.Cmd {
 	}
 
 	r.config = newFromFlags(&cmd.Flags)
+	r.apiAuthKeyConfig = apiflags.NewAPIAuthKeyFromFlags(&cmd.Flags)
 	r.adminServerConfig = adminserver.NewFromFlags(&cmd.Flags)
-	r.confAgentConfig = confagent.NewFromFlags(&cmd.Flags)
+	r.confAgentConfig = confagent.NewFromFlagsWithSharedAPIKey(&cmd.Flags, r.apiAuthKeyConfig)
 
-	r.accessLogParserConfig = logparser.NewFromFlagsWithDefaults(
+	r.accessLogParserConfig = logparser.NewFromFlags(
 		flags.NewPrefixedFlagSet(
 			&cmd.Flags,
 			"accesslog",
 			"access log",
 		),
-		parser.NoopParserType,
-		forwarder.NoopForwarderType,
+		logparser.APIAuthKey(r.apiAuthKeyConfig),
+		logparser.DefaultParserType(parser.NoopParserType),
+		logparser.DefaultForwarderType(forwarder.NoopForwarderType),
 	)
 
-	r.upstreamLogParserConfig = logparser.NewFromFlagsWithDefaults(
+	r.upstreamLogParserConfig = logparser.NewFromFlags(
 		flags.NewPrefixedFlagSet(
 			&cmd.Flags,
 			"upstreamlog",
 			"upstream log",
 		),
-		parser.NoopParserType,
-		forwarder.NoopForwarderType,
+		logparser.APIAuthKey(r.apiAuthKeyConfig),
+		logparser.DefaultParserType(parser.NoopParserType),
+		logparser.DefaultForwarderType(forwarder.NoopForwarderType),
 	)
 
 	return cmd
@@ -58,6 +62,7 @@ func Cmd() *command.Cmd {
 
 type runner struct {
 	config                  FromFlags
+	apiAuthKeyConfig        apiflags.APIAuthKeyFromFlags
 	adminServerConfig       adminserver.FromFlags
 	confAgentConfig         confagent.FromFlags
 	accessLogParserConfig   logparser.FromFlags
