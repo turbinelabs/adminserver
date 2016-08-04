@@ -9,6 +9,7 @@ import (
 	"github.com/golang/mock/gomock"
 
 	"github.com/turbinelabs/adminserver"
+	"github.com/turbinelabs/adminserver/nginx-admin/logrotater"
 	"github.com/turbinelabs/agent/confagent"
 	"github.com/turbinelabs/agent/confagent/nginxconfig"
 	"github.com/turbinelabs/cli/command"
@@ -39,11 +40,15 @@ type runnerConfig struct {
 	confAgentValidateErr error
 	confAgentMakeErr     error
 
+	logRotaterValidateErr error
+
 	accessLogParserValidateErr error
 	accessLogParserMakeErr     error
+	accessLogStartRotateErr    error
 
 	upstreamLogParserValidateErr error
 	upstreamLogParserMakeErr     error
+	upstreamLogStartRotateErr    error
 
 	adminServerValidateErr error
 	adminServerStartErr    error
@@ -137,6 +142,9 @@ func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase)
 	confAgentFromFlags := confagent.NewMockFromFlags(ctrl)
 	confAgent := confagent.NewMockConfAgent(ctrl)
 
+	logRotaterFromFlags := logrotater.NewMockFromFlags(ctrl)
+	logRotater := logrotater.NewMockLogRotater(ctrl)
+
 	accessLogParserFromFlags := logparser.NewMockFromFlags(ctrl)
 	accessLogParser := logparser.NewMockLogParser(ctrl)
 
@@ -150,6 +158,7 @@ func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase)
 		config:                  mainFromFlags,
 		adminServerConfig:       adminServerFromFlags,
 		confAgentConfig:         confAgentFromFlags,
+		logRotaterConfig:        logRotaterFromFlags,
 		accessLogParserConfig:   accessLogParserFromFlags,
 		upstreamLogParserConfig: upstreamLogParserFromFlags,
 	}
@@ -189,6 +198,14 @@ func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase)
 		adminServerFromFlags.EXPECT().Validate().Return(config.adminServerValidateErr),
 	)
 	if config.adminServerValidateErr != nil {
+		return
+	}
+
+	calls = append(
+		calls,
+		logRotaterFromFlags.EXPECT().Validate().Return(config.logRotaterValidateErr),
+	)
+	if config.logRotaterValidateErr != nil {
 		return
 	}
 
@@ -236,6 +253,33 @@ func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase)
 		return
 	}
 
+	paths := configwriter.Paths{AccessLog: "the-access-log", UpstreamLog: "the-upstream-log"}
+
+	calls = append(
+		calls,
+		logRotaterFromFlags.EXPECT().Make(gomock.Any()).Return(logRotater),
+		confAgent.EXPECT().GetPaths().Return(paths),
+		logRotater.EXPECT().
+			Start(paths.AccessLog).
+			Return(config.accessLogStartRotateErr),
+	)
+	deferredCalls = append(deferredCalls, logRotater.EXPECT().StopAll())
+
+	if config.accessLogStartRotateErr != nil {
+		return
+	}
+
+	calls = append(
+		calls,
+		logRotater.EXPECT().
+			Start(paths.UpstreamLog).
+			Return(config.upstreamLogStartRotateErr),
+	)
+
+	if config.upstreamLogStartRotateErr != nil {
+		return
+	}
+
 	calls = append(
 		calls,
 		mainFromFlags.EXPECT().
@@ -253,15 +297,12 @@ func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase)
 	// may be out of order
 	confAgent.EXPECT().Poll().AnyTimes().Return(nil)
 
-	paths := configwriter.Paths{AccessLog: "the-access-log", UpstreamLog: "the-upstream-log"}
-
 	if config.accessLogParserMakeErr == nil {
 		calls = append(
 			calls,
 			accessLogParserFromFlags.EXPECT().
 				Make(gomock.Any(), source).
 				Return(accessLogParser, nil),
-			confAgent.EXPECT().GetPaths().Return(paths),
 		)
 	} else {
 		calls = append(
@@ -287,7 +328,6 @@ func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase)
 			upstreamLogParserFromFlags.EXPECT().
 				Make(gomock.Any(), source).
 				Return(upstreamLogParser, nil),
-			confAgent.EXPECT().GetPaths().Return(paths),
 		)
 	} else {
 		calls = append(
@@ -455,6 +495,15 @@ func TestRunProcExitsWithInvalidConfAgent(t *testing.T) {
 	test.ctrl.Finish()
 }
 
+func TestRunProcExitsWithInvalidLogRotater(t *testing.T) {
+	test := mkMockRunner(t, &runnerConfig{logRotaterValidateErr: errors.New("boom")})
+	cmdErr := test.runner.Run(Cmd(), test.args)
+	assert.NotDeepEqual(t, cmdErr, command.NoError())
+	assert.MatchesRegex(t, cmdErr.Message, "boom")
+
+	test.ctrl.Finish()
+}
+
 func TestRunProcExitsWithInvalidAdminServer(t *testing.T) {
 	test := mkMockRunner(t, &runnerConfig{adminServerValidateErr: errors.New("boom")})
 	cmdErr := test.runner.Run(Cmd(), test.args)
@@ -489,6 +538,32 @@ func TestRunExitsWithConfAgentMakeError(t *testing.T) {
 	assert.MatchesRegex(t, cmdErr.Message, "make error")
 
 	test.ctrl.Finish()
+}
+
+func TestRunExistsWithUnrotatableAccessLog(t *testing.T) {
+	test := mkMockRunner(
+		t,
+		&runnerConfig{accessLogStartRotateErr: errors.New("rotate access log error")},
+	)
+	cmdErr := test.runner.Run(Cmd(), test.args)
+	assert.NotDeepEqual(t, cmdErr, command.NoError())
+	assert.MatchesRegex(t, cmdErr.Message, "rotate access log error")
+
+	test.ctrl.Finish()
+
+}
+
+func TestRunExistsWithUnrotatableUpstreamLog(t *testing.T) {
+	test := mkMockRunner(
+		t,
+		&runnerConfig{upstreamLogStartRotateErr: errors.New("rotate upstream log error")},
+	)
+	cmdErr := test.runner.Run(Cmd(), test.args)
+	assert.NotDeepEqual(t, cmdErr, command.NoError())
+	assert.MatchesRegex(t, cmdErr.Message, "rotate upstream log error")
+
+	test.ctrl.Finish()
+
 }
 
 func TestRunExitsWithAccessLogParserMakeError(t *testing.T) {

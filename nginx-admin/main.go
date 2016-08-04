@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/turbinelabs/adminserver"
+	"github.com/turbinelabs/adminserver/nginx-admin/logrotater"
 	"github.com/turbinelabs/agent/confagent"
 	apiflags "github.com/turbinelabs/api/service/http/flags"
 	"github.com/turbinelabs/cli"
@@ -57,6 +58,14 @@ func Cmd() *command.Cmd {
 		logparser.DefaultForwarderType(forwarder.NoopForwarderType),
 	)
 
+	r.logRotaterConfig = logrotater.NewFromFlags(
+		flags.NewPrefixedFlagSet(
+			&cmd.Flags,
+			"logrotate",
+			"nginx log files",
+		),
+	)
+
 	return cmd
 }
 
@@ -67,6 +76,7 @@ type runner struct {
 	confAgentConfig         confagent.FromFlags
 	accessLogParserConfig   logparser.FromFlags
 	upstreamLogParserConfig logparser.FromFlags
+	logRotaterConfig        logrotater.FromFlags
 
 	adminServerStarted bool
 }
@@ -81,6 +91,10 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 	}
 
 	if err := r.adminServerConfig.Validate(); err != nil {
+		return cmd.BadInput(err)
+	}
+
+	if err := r.logRotaterConfig.Validate(); err != nil {
 		return cmd.BadInput(err)
 	}
 
@@ -105,6 +119,17 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 
 	confAgent, err := r.confAgentConfig.Make(r.config.MakeNginxConfig(reload))
 	if err != nil {
+		return cmd.Error(err)
+	}
+
+	logRotater := r.logRotaterConfig.Make(logparser.DefaultLogger())
+	defer logRotater.StopAll()
+
+	paths := confAgent.GetPaths()
+	if err := logRotater.Start(paths.AccessLog); err != nil {
+		return cmd.Error(err)
+	}
+	if err := logRotater.Start(paths.UpstreamLog); err != nil {
 		return cmd.Error(err)
 	}
 
@@ -142,14 +167,14 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 		return cmd.Error(err)
 	}
 	defer accessLogParser.Close()
-	startTail(accessLogParser, confAgent.GetPaths().AccessLog)
+	go accessLogParser.Tail(paths.AccessLog)
 
 	upstreamLogParser, err := r.upstreamLogParserConfig.Make(logparser.DefaultLogger(), source)
 	if err != nil {
 		return cmd.Error(err)
 	}
 	defer upstreamLogParser.Close()
-	startTail(upstreamLogParser, confAgent.GetPaths().UpstreamLog)
+	go upstreamLogParser.Tail(paths.UpstreamLog)
 
 	adminServer = r.adminServerConfig.Make(managedProc)
 	r.adminServerStarted = true
@@ -189,11 +214,6 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 	}
 
 	return command.NoError()
-}
-
-func startTail(logParser logparser.LogParser, path string) {
-	// TODO: #770: should rotate log file to avoid re-parsing old data
-	go logParser.Tail(path)
 }
 
 func mkCLI() cli.CLI {
