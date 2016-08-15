@@ -19,15 +19,21 @@ import (
 
 const suffixFormat = "20060102-150405"
 
+// Function invoked after log rotation is completed. Typically used to
+// reopen log files with the correct name after rotation.
+type ReopenLogsFunc func() error
+
 // FromFlags validates and constructs a LogRotater from command
 // line flags.
 type FromFlags interface {
 	// Validates the LogRotater flags.
 	Validate() error
 
-	// Constructs a LogRotater with the given Logger from command
-	// line flags.
-	Make(*log.Logger) LogRotater
+	// Constructs a LogRotater with the given Logger and function
+	// from command line flags. The ReopenLogsFunc function is
+	// invoked after log rotation to allow logging process to
+	// reopen its log files with the correct name.
+	Make(*log.Logger, ReopenLogsFunc) LogRotater
 }
 
 // Rotates one or more log files, by path name, on a schedule.
@@ -80,16 +86,17 @@ func (ff *fromFlags) Validate() error {
 	return nil
 }
 
-func (ff *fromFlags) Make(logger *log.Logger) LogRotater {
+func (ff *fromFlags) Make(logger *log.Logger, f ReopenLogsFunc) LogRotater {
 	return &logRotater{
-		logger:    logger,
-		frequency: ff.frequency,
-		keepCount: ff.keepCount,
-		pathnames: []string{},
-		os:        tbnos.New(),
-		starter:   &sync.Once{},
-		mutex:     &sync.Mutex{},
-		quit:      make(chan bool, 1),
+		logger:     logger,
+		frequency:  ff.frequency,
+		keepCount:  ff.keepCount,
+		pathnames:  []string{},
+		reopenLogs: f,
+		os:         tbnos.New(),
+		starter:    &sync.Once{},
+		mutex:      &sync.Mutex{},
+		quit:       make(chan bool, 1),
 	}
 }
 
@@ -98,6 +105,8 @@ type logRotater struct {
 	frequency time.Duration
 	keepCount int
 	pathnames []string
+
+	reopenLogs ReopenLogsFunc
 
 	os      tbnos.OS
 	starter *sync.Once
@@ -155,6 +164,9 @@ func (r *logRotater) rotateLoop() {
 			pathnames := r.copyPathnames()
 			for _, pathname := range pathnames {
 				r.rotateAndCleanup(pathname)
+			}
+			if err := r.reopenLogs(); err != nil {
+				r.logger.Printf("failed to reopen logs: %s", err.Error())
 			}
 			r.timer.Reset(r.delayForNext())
 

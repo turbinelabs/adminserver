@@ -55,13 +55,15 @@ func TestFromFlagsMake(t *testing.T) {
 	assert.Nil(t, ff.Validate())
 
 	logger := log.NewNoopLogger()
+	reopener := func() error { return nil }
 
-	lr := ff.Make(logger)
+	lr := ff.Make(logger, reopener)
 	lrImpl := lr.(*logRotater)
 	assert.SameInstance(t, lrImpl.logger, logger)
 	assert.Equal(t, lrImpl.frequency, ff.frequency)
 	assert.Equal(t, lrImpl.keepCount, ff.keepCount)
 	assert.DeepEqual(t, lrImpl.pathnames, []string{})
+	assert.SameInstance(t, lrImpl.reopenLogs, ReopenLogsFunc(reopener))
 	assert.NonNil(t, lrImpl.os)
 	assert.NonNil(t, lrImpl.starter)
 	assert.NonNil(t, lrImpl.mutex)
@@ -482,13 +484,14 @@ func prepRotateLoopTest(
 		osMock = tbnos.NewMockOS(ctrl)
 
 		lr = &logRotater{
-			logger:    log.NewNoopLogger(),
-			frequency: 100 * time.Millisecond,
-			keepCount: 10,
-			pathnames: []string{pathname},
-			mutex:     &sync.Mutex{},
-			os:        osMock,
-			quit:      make(chan bool, 1),
+			logger:     log.NewNoopLogger(),
+			frequency:  100 * time.Millisecond,
+			keepCount:  10,
+			pathnames:  []string{pathname},
+			reopenLogs: func() error { return nil },
+			mutex:      &sync.Mutex{},
+			os:         osMock,
+			quit:       make(chan bool, 1),
 		}
 	} else {
 		osMock = lr.os.(*tbnos.MockOS)
@@ -537,7 +540,15 @@ func TestLogRotaterRotateLoop(t *testing.T) {
 
 	lr := prepRotateLoopTest(t, ctrl, nil, "/foo/bar.log", true)
 
+	reopenCalls := 0
+	lr.reopenLogs = func() error {
+		reopenCalls++
+		return nil
+	}
+
 	lr.rotateLoop()
+
+	assert.Equal(t, reopenCalls, 1)
 }
 
 func TestLogRotaterStart(t *testing.T) {

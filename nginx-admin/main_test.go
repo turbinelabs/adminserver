@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"log"
 	"sync"
 	"testing"
 	"time"
@@ -67,6 +68,7 @@ type runnerTestCase struct {
 	upstreamLogTailDone bool
 	onExit              func(error)
 	reload              reloader
+	reopenLogs          logrotater.ReopenLogsFunc
 }
 
 func (tc *runnerTestCase) start() (wait func() command.CmdErr) {
@@ -128,6 +130,10 @@ func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase)
 
 	recordReload := func(reload reloader) {
 		testcase.reload = reload
+	}
+
+	recordReopenLogs := func(_ *log.Logger, reopenLogs logrotater.ReopenLogsFunc) {
+		testcase.reopenLogs = reopenLogs
 	}
 
 	source, err := metric.NewSource(logparser.DefaultSource(), "")
@@ -257,7 +263,10 @@ func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase)
 
 	calls = append(
 		calls,
-		logRotaterFromFlags.EXPECT().Make(gomock.Any()).Return(logRotater),
+		logRotaterFromFlags.EXPECT().
+			Make(gomock.Any(), gomock.Any()).
+			Do(recordReopenLogs).
+			Return(logRotater),
 		confAgent.EXPECT().GetPaths().Return(paths),
 		logRotater.EXPECT().
 			Start(paths.AccessLog).
@@ -621,7 +630,22 @@ func TestRunnerReload(t *testing.T) {
 	test.reload()
 
 	test.adminServer.EXPECT().Close().Return(nil)
+	test.onExit(nil)
 
+	wait()
+
+	test.ctrl.Finish()
+}
+
+func TestRunnerReopenLogs(t *testing.T) {
+	test := mkMockRunner(t, &runnerConfig{args: []string{"a", "b", "c"}})
+
+	wait := test.start()
+
+	test.managedProc.EXPECT().Usr1().Return(nil)
+	test.reopenLogs()
+
+	test.adminServer.EXPECT().Close().Return(nil)
 	test.onExit(nil)
 
 	wait()

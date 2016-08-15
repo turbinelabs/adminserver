@@ -116,13 +116,19 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 
 		return managedProc.Hangup()
 	}
+	reopen := func() error {
+		if managedProc == nil {
+			return errors.New("no running nginx process")
+		}
 
+		return managedProc.Usr1()
+	}
 	confAgent, err := r.confAgentConfig.Make(r.config.MakeNginxConfig(reload))
 	if err != nil {
 		return cmd.Error(err)
 	}
 
-	logRotater := r.logRotaterConfig.Make(logparser.DefaultLogger())
+	logRotater := r.logRotaterConfig.Make(logparser.DefaultLogger(), reopen)
 	defer logRotater.StopAll()
 
 	paths := confAgent.GetPaths()
