@@ -32,9 +32,9 @@ func Cmd() *command.Cmd {
 	}
 
 	r.config = newFromFlags(&cmd.Flags)
-	r.apiAuthKeyConfig = apiflags.NewAPIAuthKeyFromFlags(&cmd.Flags)
+	r.apiConfig = apiflags.NewAPIConfigFromFlags(&cmd.Flags)
 	r.adminServerConfig = adminserver.NewFromFlags(&cmd.Flags)
-	r.confAgentConfig = confagent.NewFromFlagsWithSharedAPIKey(&cmd.Flags, r.apiAuthKeyConfig)
+	r.confAgentConfig = confagent.NewFromFlagsWithSharedAPIConfig(&cmd.Flags, r.apiConfig)
 
 	r.accessLogParserConfig = logparser.NewFromFlags(
 		flags.NewPrefixedFlagSet(
@@ -42,7 +42,7 @@ func Cmd() *command.Cmd {
 			"accesslog",
 			"access log",
 		),
-		logparser.APIAuthKey(r.apiAuthKeyConfig),
+		logparser.APIConfig(r.apiConfig),
 		logparser.DefaultParserType(parser.NoopParserType),
 		logparser.DefaultForwarderType(forwarder.NoopForwarderType),
 	)
@@ -53,7 +53,7 @@ func Cmd() *command.Cmd {
 			"upstreamlog",
 			"upstream log",
 		),
-		logparser.APIAuthKey(r.apiAuthKeyConfig),
+		logparser.APIConfig(r.apiConfig),
 		logparser.DefaultParserType(parser.NoopParserType),
 		logparser.DefaultForwarderType(forwarder.NoopForwarderType),
 	)
@@ -71,7 +71,7 @@ func Cmd() *command.Cmd {
 
 type runner struct {
 	config                  FromFlags
-	apiAuthKeyConfig        apiflags.APIAuthKeyFromFlags
+	apiConfig               apiflags.APIConfigFromFlags
 	adminServerConfig       adminserver.FromFlags
 	confAgentConfig         confagent.FromFlags
 	accessLogParserConfig   logparser.FromFlags
