@@ -36,15 +36,29 @@ func Cmd() *command.Cmd {
 	r.adminServerConfig = adminserver.NewFromFlags(&cmd.Flags)
 	r.confAgentConfig = confagent.NewFromFlagsWithSharedAPIConfig(&cmd.Flags, r.apiConfig)
 
+	forwarderApiConfig := apiflags.NewPrefixedAPIConfigFromFlags(
+		flags.NewPrefixedFlagSet(
+			&cmd.Flags,
+			"forwarder.api",
+			"forwarder API",
+		),
+		apiflags.APIConfigSetAPIAuthKeyFromFlags(r.apiConfig.APIAuthKeyFromFlags()),
+	)
+
 	r.accessLogParserConfig = logparser.NewFromFlags(
 		flags.NewPrefixedFlagSet(
 			&cmd.Flags,
 			"accesslog",
 			"access log",
 		),
-		logparser.APIConfig(r.apiConfig),
-		logparser.DefaultParserType(parser.NoopParserType),
-		logparser.DefaultForwarderType(forwarder.NoopForwarderType),
+		logparser.ForwarderOptions(
+			forwarder.APIConfig(forwarderApiConfig),
+			forwarder.SetDefaultForwarderType(forwarder.TurbineForwarderType),
+		),
+		logparser.ParserOptions(
+			parser.SetDefaultParserType(parser.PositionalParserType),
+			parser.SetDefaultPositionalFormat(parser.PositionalFormatTbnAccess),
+		),
 	)
 
 	r.upstreamLogParserConfig = logparser.NewFromFlags(
@@ -53,9 +67,14 @@ func Cmd() *command.Cmd {
 			"upstreamlog",
 			"upstream log",
 		),
-		logparser.APIConfig(r.apiConfig),
-		logparser.DefaultParserType(parser.NoopParserType),
-		logparser.DefaultForwarderType(forwarder.NoopForwarderType),
+		logparser.ForwarderOptions(
+			forwarder.APIConfig(forwarderApiConfig),
+			forwarder.SetDefaultForwarderType(forwarder.TurbineForwarderType),
+		),
+		logparser.ParserOptions(
+			parser.SetDefaultParserType(parser.PositionalParserType),
+			parser.SetDefaultPositionalFormat(parser.PositionalFormatTbnUpstream),
+		),
 	)
 
 	r.logRotaterConfig = logrotater.NewFromFlags(
