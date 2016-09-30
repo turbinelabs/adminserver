@@ -33,8 +33,13 @@ func Cmd() *command.Cmd {
 
 	r.config = newFromFlags(&cmd.Flags)
 	r.apiConfig = apiflags.NewAPIConfigFromFlags(&cmd.Flags)
+	r.zoneKeyConfig = apiflags.NewZoneKeyFromFlags(&cmd.Flags)
 	r.adminServerConfig = adminserver.NewFromFlags(&cmd.Flags)
-	r.confAgentConfig = confagent.NewFromFlagsWithSharedAPIConfig(&cmd.Flags, r.apiConfig)
+	r.confAgentConfig = confagent.NewFromFlags(
+		&cmd.Flags,
+		confagent.SetAPIConfigFromFlags(r.apiConfig),
+		confagent.SetZoneKeyFromFlags(r.zoneKeyConfig),
+	)
 
 	forwarderApiConfig := apiflags.NewPrefixedAPIConfigFromFlags(
 		flags.NewPrefixedFlagSet(
@@ -52,7 +57,9 @@ func Cmd() *command.Cmd {
 			"access log",
 		),
 		logparser.ForwarderOptions(
-			forwarder.APIConfig(forwarderApiConfig),
+			forwarder.SetAPIConfigFromFlags(forwarderApiConfig),
+			forwarder.SetZoneKeyFromFlags(r.zoneKeyConfig),
+			forwarder.SetAPIReportUpstreamStats(false),
 			forwarder.SetDefaultForwarderType(forwarder.TurbineForwarderType),
 		),
 		logparser.ParserOptions(
@@ -68,7 +75,9 @@ func Cmd() *command.Cmd {
 			"upstream log",
 		),
 		logparser.ForwarderOptions(
-			forwarder.APIConfig(forwarderApiConfig),
+			forwarder.SetAPIConfigFromFlags(forwarderApiConfig),
+			forwarder.SetZoneKeyFromFlags(r.zoneKeyConfig),
+			forwarder.SetAPIReportUpstreamStats(true),
 			forwarder.SetDefaultForwarderType(forwarder.TurbineForwarderType),
 		),
 		logparser.ParserOptions(
@@ -91,6 +100,7 @@ func Cmd() *command.Cmd {
 type runner struct {
 	config                  FromFlags
 	apiConfig               apiflags.APIConfigFromFlags
+	zoneKeyConfig           apiflags.ZoneKeyFromFlags
 	adminServerConfig       adminserver.FromFlags
 	confAgentConfig         confagent.FromFlags
 	accessLogParserConfig   logparser.FromFlags
