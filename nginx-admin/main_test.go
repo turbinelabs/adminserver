@@ -643,6 +643,8 @@ func TestRunnerReopenLogs(t *testing.T) {
 	wait := test.start()
 
 	test.managedProc.EXPECT().Usr1().Return(nil)
+	test.accessLogParser.EXPECT().Restart()
+	test.upstreamLogParser.EXPECT().Restart()
 	test.reopenLogs()
 
 	test.adminServer.EXPECT().Close().Return(nil)

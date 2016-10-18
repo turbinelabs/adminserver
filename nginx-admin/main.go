@@ -138,6 +138,7 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 	source := r.config.Source()
 
 	var managedProc proc.ManagedProc
+	var accessLogParser, upstreamLogParser logparser.LogParser
 	reload := func() error {
 		if managedProc == nil {
 			return errors.New("no running nginx process")
@@ -150,7 +151,17 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 			return errors.New("no running nginx process")
 		}
 
-		return managedProc.Usr1()
+		err := managedProc.Usr1()
+
+		if accessLogParser != nil {
+			accessLogParser.Restart()
+		}
+
+		if upstreamLogParser != nil {
+			upstreamLogParser.Restart()
+		}
+
+		return err
 	}
 	confAgent, err := r.confAgentConfig.Make(r.config.MakeNginxConfig(reload))
 	if err != nil {
@@ -197,14 +208,14 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 		}
 	}()
 
-	accessLogParser, err := r.accessLogParserConfig.Make(logparser.DefaultLogger(), source)
+	accessLogParser, err = r.accessLogParserConfig.Make(logparser.DefaultLogger(), source)
 	if err != nil {
 		return cmd.Error(err)
 	}
 	defer accessLogParser.Close()
 	go accessLogParser.Tail(paths.AccessLog)
 
-	upstreamLogParser, err := r.upstreamLogParserConfig.Make(logparser.DefaultLogger(), source)
+	upstreamLogParser, err = r.upstreamLogParserConfig.Make(logparser.DefaultLogger(), source)
 	if err != nil {
 		return cmd.Error(err)
 	}
