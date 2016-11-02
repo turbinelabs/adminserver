@@ -14,6 +14,7 @@ import (
 	"github.com/turbinelabs/cli"
 	"github.com/turbinelabs/cli/command"
 	"github.com/turbinelabs/cli/flags"
+	"github.com/turbinelabs/executor"
 	"github.com/turbinelabs/logparser"
 	"github.com/turbinelabs/logparser/forwarder"
 	"github.com/turbinelabs/logparser/parser"
@@ -41,6 +42,14 @@ func Cmd() *command.Cmd {
 		confagent.SetZoneKeyFromFlags(r.zoneKeyConfig),
 	)
 
+	r.executorConfig = executor.NewFromFlags(
+		flags.NewPrefixedFlagSet(
+			&cmd.Flags,
+			"exec",
+			"API request executor",
+		),
+	)
+
 	forwarderApiConfig := apiflags.NewPrefixedAPIConfigFromFlags(
 		flags.NewPrefixedFlagSet(
 			&cmd.Flags,
@@ -61,6 +70,7 @@ func Cmd() *command.Cmd {
 			forwarder.SetZoneKeyFromFlags(r.zoneKeyConfig),
 			forwarder.SetAPIReportUpstreamStats(false),
 			forwarder.SetDefaultForwarderType(forwarder.TurbineForwarderType),
+			forwarder.SetExecutorFromFlags(r.executorConfig),
 		),
 		logparser.ParserOptions(
 			parser.SetDefaultParserType(parser.PositionalParserType),
@@ -79,6 +89,7 @@ func Cmd() *command.Cmd {
 			forwarder.SetZoneKeyFromFlags(r.zoneKeyConfig),
 			forwarder.SetAPIReportUpstreamStats(true),
 			forwarder.SetDefaultForwarderType(forwarder.TurbineForwarderType),
+			forwarder.SetExecutorFromFlags(r.executorConfig),
 		),
 		logparser.ParserOptions(
 			parser.SetDefaultParserType(parser.PositionalParserType),
@@ -103,6 +114,7 @@ type runner struct {
 	zoneKeyConfig           apiflags.ZoneKeyFromFlags
 	adminServerConfig       adminserver.FromFlags
 	confAgentConfig         confagent.FromFlags
+	executorConfig          executor.FromFlags
 	accessLogParserConfig   logparser.FromFlags
 	upstreamLogParserConfig logparser.FromFlags
 	logRotaterConfig        logrotater.FromFlags
