@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/turbinelabs/cli/flags"
-	tbnos "github.com/turbinelabs/os"
+	tbnflag "github.com/turbinelabs/stdlib/flag"
+	tbnos "github.com/turbinelabs/stdlib/os"
 )
 
 const suffixFormat = "20060102-150405"
@@ -48,8 +48,8 @@ type LogRotater interface {
 	StopAll()
 }
 
-// Constructs a new FromFlags from the given flags.PrefixedFlagSet.
-func NewFromFlags(flagset *flags.PrefixedFlagSet) FromFlags {
+// Constructs a new FromFlags from the given tbnflag.PrefixedFlagSet.
+func NewFromFlags(flagset *tbnflag.PrefixedFlagSet) FromFlags {
 	ff := &fromFlags{}
 
 	flagset.DurationVar(

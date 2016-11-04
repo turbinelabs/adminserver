@@ -12,8 +12,8 @@ import (
 
 	"github.com/golang/mock/gomock"
 
-	"github.com/turbinelabs/cli/flags"
-	tbnos "github.com/turbinelabs/os"
+	tbnflag "github.com/turbinelabs/stdlib/flag"
+	tbnos "github.com/turbinelabs/stdlib/os"
 	"github.com/turbinelabs/test/assert"
 	"github.com/turbinelabs/test/log"
 	"github.com/turbinelabs/test/matcher"
@@ -22,7 +22,7 @@ import (
 
 func TestNewFromFlags(t *testing.T) {
 	underlying := flag.NewFlagSet("logrotater options", flag.PanicOnError)
-	flagset := flags.NewPrefixedFlagSet(underlying, "logrotate", "test")
+	flagset := tbnflag.NewPrefixedFlagSet(underlying, "logrotate", "test")
 
 	ff := NewFromFlags(flagset)
 	ffImpl := ff.(*fromFlags)

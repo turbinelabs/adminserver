@@ -13,12 +13,12 @@ import (
 	apiflags "github.com/turbinelabs/api/service/http/flags"
 	"github.com/turbinelabs/cli"
 	"github.com/turbinelabs/cli/command"
-	"github.com/turbinelabs/cli/flags"
 	"github.com/turbinelabs/executor"
 	"github.com/turbinelabs/logparser"
 	"github.com/turbinelabs/logparser/forwarder"
 	"github.com/turbinelabs/logparser/parser"
-	"github.com/turbinelabs/proc"
+	tbnflag "github.com/turbinelabs/stdlib/flag"
+	"github.com/turbinelabs/stdlib/proc"
 )
 
 func Cmd() *command.Cmd {
@@ -43,7 +43,7 @@ func Cmd() *command.Cmd {
 	)
 
 	r.executorConfig = executor.NewFromFlags(
-		flags.NewPrefixedFlagSet(
+		tbnflag.NewPrefixedFlagSet(
 			&cmd.Flags,
 			"exec",
 			"API request executor",
@@ -51,7 +51,7 @@ func Cmd() *command.Cmd {
 	)
 
 	forwarderApiConfig := apiflags.NewPrefixedAPIConfigFromFlags(
-		flags.NewPrefixedFlagSet(
+		tbnflag.NewPrefixedFlagSet(
 			&cmd.Flags,
 			"forwarder.api",
 			"forwarder API",
@@ -60,7 +60,7 @@ func Cmd() *command.Cmd {
 	)
 
 	r.accessLogParserConfig = logparser.NewFromFlags(
-		flags.NewPrefixedFlagSet(
+		tbnflag.NewPrefixedFlagSet(
 			&cmd.Flags,
 			"accesslog",
 			"access log",
@@ -79,7 +79,7 @@ func Cmd() *command.Cmd {
 	)
 
 	r.upstreamLogParserConfig = logparser.NewFromFlags(
-		flags.NewPrefixedFlagSet(
+		tbnflag.NewPrefixedFlagSet(
 			&cmd.Flags,
 			"upstreamlog",
 			"upstream log",
@@ -98,7 +98,7 @@ func Cmd() *command.Cmd {
 	)
 
 	r.logRotaterConfig = logrotater.NewFromFlags(
-		flags.NewPrefixedFlagSet(
+		tbnflag.NewPrefixedFlagSet(
 			&cmd.Flags,
 			"logrotate",
 			"nginx log files",

@@ -12,7 +12,7 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/turbinelabs/proc"
+	"github.com/turbinelabs/stdlib/proc"
 )
 
 type RequestedSignalType int

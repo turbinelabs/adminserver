@@ -10,7 +10,7 @@ import (
 	"github.com/turbinelabs/agent/confagent/nginxconfig"
 	"github.com/turbinelabs/logparser"
 	"github.com/turbinelabs/logparser/metric"
-	"github.com/turbinelabs/proc"
+	"github.com/turbinelabs/stdlib/proc"
 )
 
 const (
