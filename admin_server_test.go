@@ -11,7 +11,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 
-	"github.com/turbinelabs/stdlib/proc"
+	"github.com/turbinelabs/nonstdlib/proc"
 	"github.com/turbinelabs/test/assert"
 )
 

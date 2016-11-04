@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	tbnflag "github.com/turbinelabs/stdlib/flag"
-	tbnos "github.com/turbinelabs/stdlib/os"
+	tbnflag "github.com/turbinelabs/nonstdlib/flag"
+	tbnos "github.com/turbinelabs/nonstdlib/os"
 )
 
 const suffixFormat = "20060102-150405"

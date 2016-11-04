@@ -12,8 +12,8 @@ import (
 
 	"github.com/golang/mock/gomock"
 
-	tbnflag "github.com/turbinelabs/stdlib/flag"
-	tbnos "github.com/turbinelabs/stdlib/os"
+	tbnflag "github.com/turbinelabs/nonstdlib/flag"
+	tbnos "github.com/turbinelabs/nonstdlib/os"
 	"github.com/turbinelabs/test/assert"
 	"github.com/turbinelabs/test/log"
 	"github.com/turbinelabs/test/matcher"

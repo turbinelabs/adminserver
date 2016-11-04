@@ -17,7 +17,7 @@ import (
 	"github.com/turbinelabs/configwriter"
 	"github.com/turbinelabs/logparser"
 	"github.com/turbinelabs/logparser/metric"
-	"github.com/turbinelabs/stdlib/proc"
+	"github.com/turbinelabs/nonstdlib/proc"
 	"github.com/turbinelabs/test/assert"
 )
 

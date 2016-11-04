@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/turbinelabs/stdlib/proc"
+	"github.com/turbinelabs/nonstdlib/proc"
 )
 
 const (

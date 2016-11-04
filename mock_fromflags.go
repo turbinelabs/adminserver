@@ -5,7 +5,7 @@ package adminserver
 
 import (
 	gomock "github.com/golang/mock/gomock"
-	proc "github.com/turbinelabs/stdlib/proc"
+	proc "github.com/turbinelabs/nonstdlib/proc"
 )
 
 // Mock of FromFlags interface

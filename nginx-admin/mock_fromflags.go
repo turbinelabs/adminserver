@@ -7,7 +7,7 @@ import (
 	gomock "github.com/golang/mock/gomock"
 	nginxconfig "github.com/turbinelabs/agent/confagent/nginxconfig"
 	metric "github.com/turbinelabs/logparser/metric"
-	proc "github.com/turbinelabs/stdlib/proc"
+	proc "github.com/turbinelabs/nonstdlib/proc"
 )
 
 // Mock of FromFlags interface

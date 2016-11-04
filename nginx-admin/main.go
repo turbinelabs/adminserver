@@ -13,12 +13,12 @@ import (
 	apiflags "github.com/turbinelabs/api/service/http/flags"
 	"github.com/turbinelabs/cli"
 	"github.com/turbinelabs/cli/command"
-	"github.com/turbinelabs/executor"
 	"github.com/turbinelabs/logparser"
 	"github.com/turbinelabs/logparser/forwarder"
 	"github.com/turbinelabs/logparser/parser"
-	tbnflag "github.com/turbinelabs/stdlib/flag"
-	"github.com/turbinelabs/stdlib/proc"
+	"github.com/turbinelabs/nonstdlib/executor"
+	tbnflag "github.com/turbinelabs/nonstdlib/flag"
+	"github.com/turbinelabs/nonstdlib/proc"
 )
 
 func Cmd() *command.Cmd {
