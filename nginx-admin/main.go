@@ -10,7 +10,7 @@ import (
 	"github.com/turbinelabs/adminserver"
 	"github.com/turbinelabs/adminserver/nginx-admin/logrotater"
 	"github.com/turbinelabs/agent/confagent"
-	apiflags "github.com/turbinelabs/api/service/http/flags"
+	apiflags "github.com/turbinelabs/api/client/flags"
 	"github.com/turbinelabs/cli"
 	"github.com/turbinelabs/cli/command"
 	"github.com/turbinelabs/logparser"
