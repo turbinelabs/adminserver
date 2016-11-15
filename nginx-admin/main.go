@@ -19,6 +19,7 @@ import (
 	"github.com/turbinelabs/nonstdlib/executor"
 	tbnflag "github.com/turbinelabs/nonstdlib/flag"
 	"github.com/turbinelabs/nonstdlib/proc"
+	"github.com/turbinelabs/stats/client"
 )
 
 func Cmd() *command.Cmd {
@@ -50,13 +51,20 @@ func Cmd() *command.Cmd {
 		),
 	)
 
+	forwarderApiFlags := tbnflag.NewPrefixedFlagSet(
+		&cmd.Flags,
+		"forwarder.api",
+		"forwarder API",
+	)
+
 	forwarderApiConfig := apiflags.NewPrefixedAPIConfigFromFlags(
-		tbnflag.NewPrefixedFlagSet(
-			&cmd.Flags,
-			"forwarder.api",
-			"forwarder API",
-		),
+		forwarderApiFlags,
 		apiflags.APIConfigSetAPIAuthKeyFromFlags(r.apiConfig.APIAuthKeyFromFlags()),
+	)
+
+	statsClientFromFlags := client.NewFromFlags(
+		forwarderApiFlags,
+		client.WithAPIConfigFromFlags(forwarderApiConfig),
 	)
 
 	r.accessLogParserConfig = logparser.NewFromFlags(
@@ -66,7 +74,7 @@ func Cmd() *command.Cmd {
 			"access log",
 		),
 		logparser.ForwarderOptions(
-			forwarder.SetAPIConfigFromFlags(forwarderApiConfig),
+			forwarder.SetStatsClientFromFlags(statsClientFromFlags),
 			forwarder.SetZoneKeyFromFlags(r.zoneKeyConfig),
 			forwarder.SetAPIReportUpstreamStats(false),
 			forwarder.SetDefaultForwarderType(forwarder.TurbineForwarderType),
@@ -85,7 +93,7 @@ func Cmd() *command.Cmd {
 			"upstream log",
 		),
 		logparser.ForwarderOptions(
-			forwarder.SetAPIConfigFromFlags(forwarderApiConfig),
+			forwarder.SetStatsClientFromFlags(statsClientFromFlags),
 			forwarder.SetZoneKeyFromFlags(r.zoneKeyConfig),
 			forwarder.SetAPIReportUpstreamStats(true),
 			forwarder.SetDefaultForwarderType(forwarder.TurbineForwarderType),
