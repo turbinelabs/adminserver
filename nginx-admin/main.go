@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -62,7 +63,7 @@ func Cmd() *command.Cmd {
 		apiflags.APIConfigSetAPIAuthKeyFromFlags(r.apiConfig.APIAuthKeyFromFlags()),
 	)
 
-	statsClientFromFlags := client.NewFromFlags(
+	r.statsClientConfig = client.NewFromFlags(
 		forwarderApiFlags,
 		client.WithAPIConfigFromFlags(forwarderApiConfig),
 	)
@@ -74,7 +75,7 @@ func Cmd() *command.Cmd {
 			"access log",
 		),
 		logparser.ForwarderOptions(
-			forwarder.SetStatsClientFromFlags(statsClientFromFlags),
+			forwarder.SetStatsClientFromFlags(r.statsClientConfig),
 			forwarder.SetZoneKeyFromFlags(r.zoneKeyConfig),
 			forwarder.SetAPIReportUpstreamStats(false),
 			forwarder.SetDefaultForwarderType(forwarder.TurbineForwarderType),
@@ -93,7 +94,7 @@ func Cmd() *command.Cmd {
 			"upstream log",
 		),
 		logparser.ForwarderOptions(
-			forwarder.SetStatsClientFromFlags(statsClientFromFlags),
+			forwarder.SetStatsClientFromFlags(r.statsClientConfig),
 			forwarder.SetZoneKeyFromFlags(r.zoneKeyConfig),
 			forwarder.SetAPIReportUpstreamStats(true),
 			forwarder.SetDefaultForwarderType(forwarder.TurbineForwarderType),
@@ -123,6 +124,7 @@ type runner struct {
 	adminServerConfig       adminserver.FromFlags
 	confAgentConfig         confagent.FromFlags
 	executorConfig          executor.FromFlags
+	statsClientConfig       client.FromFlags
 	accessLogParserConfig   logparser.FromFlags
 	upstreamLogParserConfig logparser.FromFlags
 	logRotaterConfig        logrotater.FromFlags
@@ -131,31 +133,32 @@ type runner struct {
 }
 
 func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
-	if err := r.config.Validate(); err != nil {
-		return cmd.BadInput(err)
+	validations := []func() error{
+		r.config.Validate,
+		r.confAgentConfig.Validate,
+		r.adminServerConfig.Validate,
+		r.logRotaterConfig.Validate,
+		r.accessLogParserConfig.Validate,
+		r.upstreamLogParserConfig.Validate,
+		r.statsClientConfig.Validate,
+	}
+	for _, f := range validations {
+		if err := f(); err != nil {
+			return cmd.BadInput(err)
+		}
 	}
 
-	if err := r.confAgentConfig.Validate(); err != nil {
-		return cmd.BadInput(err)
+	executor := r.executorConfig.Make(log.New(os.Stderr, "executor: ", log.LstdFlags))
+	statsClient, err := r.statsClientConfig.Make(
+		executor,
+		log.New(os.Stderr, "stats: ", log.LstdFlags),
+	)
+	if err != nil {
+		return cmd.Error(err)
 	}
-
-	if err := r.adminServerConfig.Validate(); err != nil {
-		return cmd.BadInput(err)
-	}
-
-	if err := r.logRotaterConfig.Validate(); err != nil {
-		return cmd.BadInput(err)
-	}
-
-	if err := r.accessLogParserConfig.Validate(); err != nil {
-		return cmd.BadInput(err)
-	}
-
-	if err := r.upstreamLogParserConfig.Validate(); err != nil {
-		return cmd.BadInput(err)
-	}
-
 	source := r.config.Source()
+
+	executor.SetStats(statsClient.Stats(source.Source(), "executor"))
 
 	var managedProc proc.ManagedProc
 	var accessLogParser, upstreamLogParser logparser.LogParser

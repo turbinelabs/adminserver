@@ -17,7 +17,10 @@ import (
 	"github.com/turbinelabs/configwriter"
 	"github.com/turbinelabs/logparser"
 	"github.com/turbinelabs/logparser/metric"
+	"github.com/turbinelabs/nonstdlib/executor"
 	"github.com/turbinelabs/nonstdlib/proc"
+	"github.com/turbinelabs/stats"
+	"github.com/turbinelabs/stats/client"
 	"github.com/turbinelabs/test/assert"
 )
 
@@ -53,6 +56,9 @@ type runnerConfig struct {
 
 	adminServerValidateErr error
 	adminServerStartErr    error
+
+	statsClientValidateErr error
+	statsClientMakeErr     error
 }
 
 type runnerTestCase struct {
@@ -61,6 +67,8 @@ type runnerTestCase struct {
 	ctrl                *gomock.Controller
 	runner              *runner
 	adminServer         *adminserver.MockAdminServer
+	executor            *executor.MockExecutor
+	statsClient         *client.MockStatsClient
 	managedProc         *proc.MockManagedProc
 	accessLogParser     *logparser.MockLogParser
 	accessLogTailDone   bool
@@ -148,6 +156,13 @@ func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase)
 	confAgentFromFlags := confagent.NewMockFromFlags(ctrl)
 	confAgent := confagent.NewMockConfAgent(ctrl)
 
+	executorFromFlags := executor.NewMockFromFlags(ctrl)
+	executor := executor.NewMockExecutor(ctrl)
+
+	statsClientFromFlags := client.NewMockFromFlags(ctrl)
+	statsClient := client.NewMockStatsClient(ctrl)
+	stats := stats.NewMockStats(ctrl)
+
 	logRotaterFromFlags := logrotater.NewMockFromFlags(ctrl)
 	logRotater := logrotater.NewMockLogRotater(ctrl)
 
@@ -164,6 +179,8 @@ func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase)
 		config:                  mainFromFlags,
 		adminServerConfig:       adminServerFromFlags,
 		confAgentConfig:         confAgentFromFlags,
+		executorConfig:          executorFromFlags,
+		statsClientConfig:       statsClientFromFlags,
 		logRotaterConfig:        logRotaterFromFlags,
 		accessLogParserConfig:   accessLogParserFromFlags,
 		upstreamLogParserConfig: upstreamLogParserFromFlags,
@@ -237,7 +254,39 @@ func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase)
 
 	calls = append(
 		calls,
-		mainFromFlags.EXPECT().Source().Return(source),
+		statsClientFromFlags.EXPECT().Validate().Return(config.statsClientValidateErr),
+	)
+	if config.statsClientValidateErr != nil {
+		return
+	}
+
+	calls = append(
+		calls,
+		executorFromFlags.EXPECT().Make(gomock.Any()).Return(executor),
+	)
+
+	if config.statsClientMakeErr == nil {
+		calls = append(
+			calls,
+			statsClientFromFlags.EXPECT().
+				Make(executor, gomock.Any()).
+				Return(statsClient, nil),
+			mainFromFlags.EXPECT().Source().Return(source),
+			statsClient.EXPECT().Stats(source.Source(), "executor").Return(stats),
+			executor.EXPECT().SetStats(stats),
+		)
+	} else {
+		calls = append(
+			calls,
+			statsClientFromFlags.EXPECT().
+				Make(executor, gomock.Any()).
+				Return(nil, config.statsClientMakeErr),
+		)
+		return
+	}
+
+	calls = append(
+		calls,
 		mainFromFlags.EXPECT().
 			MakeNginxConfig(gomock.Any()).
 			Do(recordReload).
