@@ -19,7 +19,7 @@ import (
 	"github.com/turbinelabs/logparser/metric"
 	"github.com/turbinelabs/nonstdlib/executor"
 	"github.com/turbinelabs/nonstdlib/proc"
-	"github.com/turbinelabs/stats"
+	"github.com/turbinelabs/nonstdlib/stats"
 	"github.com/turbinelabs/stats/client"
 	"github.com/turbinelabs/test/assert"
 )
