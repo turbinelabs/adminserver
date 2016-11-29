@@ -13,13 +13,13 @@ import (
 	"github.com/turbinelabs/adminserver/nginx-admin/logrotater"
 	"github.com/turbinelabs/agent/confagent"
 	"github.com/turbinelabs/agent/confagent/nginxconfig"
+	statsapi "github.com/turbinelabs/api/service/stats"
 	"github.com/turbinelabs/cli/command"
 	"github.com/turbinelabs/configwriter"
 	"github.com/turbinelabs/logparser"
 	"github.com/turbinelabs/logparser/metric"
 	"github.com/turbinelabs/nonstdlib/executor"
 	"github.com/turbinelabs/nonstdlib/proc"
-	"github.com/turbinelabs/nonstdlib/stats"
 	"github.com/turbinelabs/stats/client"
 	"github.com/turbinelabs/test/assert"
 )
@@ -68,7 +68,7 @@ type runnerTestCase struct {
 	runner              *runner
 	adminServer         *adminserver.MockAdminServer
 	executor            *executor.MockExecutor
-	statsClient         *client.MockStatsClient
+	statsSvc            *statsapi.MockStatsService
 	managedProc         *proc.MockManagedProc
 	accessLogParser     *logparser.MockLogParser
 	accessLogTailDone   bool
@@ -160,8 +160,8 @@ func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase)
 	executor := executor.NewMockExecutor(ctrl)
 
 	statsClientFromFlags := client.NewMockFromFlags(ctrl)
-	statsClient := client.NewMockStatsClient(ctrl)
-	stats := stats.NewMockStats(ctrl)
+	statsSvc := statsapi.NewMockStatsService(ctrl)
+	stats := statsapi.AsStats(statsSvc, source.Source(), "executor")
 
 	logRotaterFromFlags := logrotater.NewMockFromFlags(ctrl)
 	logRotater := logrotater.NewMockLogRotater(ctrl)
@@ -270,9 +270,8 @@ func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase)
 			calls,
 			statsClientFromFlags.EXPECT().
 				Make(executor, gomock.Any()).
-				Return(statsClient, nil),
+				Return(statsSvc, nil),
 			mainFromFlags.EXPECT().Source().Return(source),
-			statsClient.EXPECT().Stats(source.Source(), "executor").Return(stats),
 			executor.EXPECT().SetStats(stats),
 		)
 	} else {

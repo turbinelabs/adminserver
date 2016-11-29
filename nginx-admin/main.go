@@ -13,6 +13,7 @@ import (
 	"github.com/turbinelabs/adminserver/nginx-admin/logrotater"
 	"github.com/turbinelabs/agent/confagent"
 	apiflags "github.com/turbinelabs/api/client/flags"
+	statsapi "github.com/turbinelabs/api/service/stats"
 	"github.com/turbinelabs/cli"
 	"github.com/turbinelabs/cli/command"
 	"github.com/turbinelabs/logparser"
@@ -164,7 +165,7 @@ func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 	}
 	source := r.config.Source()
 
-	executor.SetStats(statsClient.Stats(source.Source(), "executor"))
+	executor.SetStats(statsapi.AsStats(statsClient, source.Source(), "executor"))
 
 	var managedProc proc.ManagedProc
 	var accessLogParser, upstreamLogParser logparser.LogParser
