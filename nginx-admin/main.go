@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/turbinelabs/adminserver"
 	"github.com/turbinelabs/adminserver/nginx-admin/logrotater"
@@ -44,13 +45,18 @@ func Cmd() *command.Cmd {
 		confagent.SetZoneKeyFromFlags(r.zoneKeyConfig),
 	)
 
-	r.executorConfig = executor.NewFromFlags(
-		tbnflag.NewPrefixedFlagSet(
-			&cmd.Flags,
-			"exec",
-			"API request executor",
-		),
-	)
+	r.executorConfig =
+		executor.NewFromFlagsWithDefaults(
+			tbnflag.NewPrefixedFlagSet(
+				&cmd.Flags,
+				"exec",
+				"API request executor",
+			),
+			executor.FromFlagsDefaults{
+				AttemptTimeout: 1 * time.Second,
+				Timeout:        10 * time.Second,
+			},
+		)
 
 	forwarderApiFlags := tbnflag.NewPrefixedFlagSet(
 		&cmd.Flags,
