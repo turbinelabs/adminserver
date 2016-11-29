@@ -57,6 +57,20 @@ func mkAdminServer(t *testing.T) (AdminServer, *proc.MockManagedProc, func()) {
 	return as, mockProc, cleanup
 }
 
+func TestAdminServer404(t *testing.T) {
+	as, _, cleanup := mkAdminServer(t)
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/foo/bar", as.Addr()))
+	assert.Nil(t, err)
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+
+	assert.Equal(t, resp.StatusCode, 404)
+	assert.Equal(t, string(body), "NOT FOUND\n")
+
+	cleanup()
+}
+
 func TestAdminServerKill(t *testing.T) {
 	as, mockProc, cleanup := mkAdminServer(t)
 
@@ -67,6 +81,7 @@ func TestAdminServerKill(t *testing.T) {
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 
+	assert.Equal(t, resp.StatusCode, 200)
 	assert.Equal(t, string(body), "OK\n")
 	assert.Equal(t, as.LastRequestedSignal(), RequestedKillSignal)
 
@@ -83,6 +98,7 @@ func TestAdminServerKillError(t *testing.T) {
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 
+	assert.Equal(t, resp.StatusCode, 500)
 	assert.Equal(t, string(body), "FAILED: oops\n")
 	assert.Equal(t, as.LastRequestedSignal(), RequestedKillSignal)
 
@@ -99,6 +115,7 @@ func TestAdminServerQuit(t *testing.T) {
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 
+	assert.Equal(t, resp.StatusCode, 200)
 	assert.Equal(t, string(body), "OK\n")
 	assert.Equal(t, as.LastRequestedSignal(), RequestedQuitSignal)
 
@@ -115,6 +132,7 @@ func TestAdminServerQuitError(t *testing.T) {
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 
+	assert.Equal(t, resp.StatusCode, 500)
 	assert.Equal(t, string(body), "FAILED: oops\n")
 	assert.Equal(t, as.LastRequestedSignal(), RequestedQuitSignal)
 
@@ -131,6 +149,7 @@ func TestAdminServerReload(t *testing.T) {
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 
+	assert.Equal(t, resp.StatusCode, 200)
 	assert.Equal(t, string(body), "OK\n")
 	assert.Equal(t, as.LastRequestedSignal(), RequestedHangupSignal)
 
@@ -147,6 +166,7 @@ func TestAdminServerReloadError(t *testing.T) {
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 
+	assert.Equal(t, resp.StatusCode, 500)
 	assert.Equal(t, string(body), "FAILED: oops\n")
 	assert.Equal(t, as.LastRequestedSignal(), RequestedHangupSignal)
 

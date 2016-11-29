@@ -10,8 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/mux"
-
 	"github.com/turbinelabs/nonstdlib/proc"
 )
 
@@ -66,27 +64,27 @@ func New(ip string, port int, managedProc proc.ManagedProc) AdminServer {
 		managedProc:         managedProc,
 	}
 
-	router := mux.NewRouter()
-	router.StrictSlash(true)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			w.Write([]byte("404\n"))
+		}
 
-	router.Methods("GET").Path("/admin/kill").HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.String() {
+		case "/admin/kill":
 			adminServer.kill(w, r)
-		})
-
-	router.Methods("GET").Path("/admin/quit").HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
+		case "/admin/quit":
 			adminServer.quit(w, r)
-		})
-
-	router.Methods("GET").Path("/admin/reload").HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
+		case "/admin/reload":
 			adminServer.reload(w, r)
-		})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("NOT FOUND\n"))
+		}
+	})
 
 	adminServer.server = &http.Server{
 		Addr:         hostPort,
-		Handler:      router,
+		Handler:      handler,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
@@ -157,6 +155,7 @@ func (adminServer *adminServer) kill(w http.ResponseWriter, request *http.Reques
 	adminServer.lastRequestedSignal = RequestedKillSignal
 	w.Header().Set("Content-Type", "text/plain")
 	if err := adminServer.managedProc.Kill(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(fmt.Sprintf("FAILED: %s\n", err.Error())))
 	} else {
 		w.Write([]byte("OK\n"))
@@ -167,6 +166,7 @@ func (adminServer *adminServer) quit(w http.ResponseWriter, request *http.Reques
 	adminServer.lastRequestedSignal = RequestedQuitSignal
 	w.Header().Set("Content-Type", "text/plain")
 	if err := adminServer.managedProc.Quit(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(fmt.Sprintf("FAILED: %s\n", err.Error())))
 	} else {
 		w.Write([]byte("OK\n"))
@@ -177,6 +177,7 @@ func (adminServer *adminServer) reload(w http.ResponseWriter, request *http.Requ
 	adminServer.lastRequestedSignal = RequestedHangupSignal
 	w.Header().Set("Content-Type", "text/plain")
 	if err := adminServer.managedProc.Hangup(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(fmt.Sprintf("FAILED: %s\n", err.Error())))
 	} else {
 		w.Write([]byte("OK\n"))
