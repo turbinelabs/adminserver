@@ -142,6 +142,7 @@ type runner struct {
 func (r *runner) Run(cmd *command.Cmd, args []string) command.CmdErr {
 	validations := []func() error{
 		r.config.Validate,
+		r.apiConfig.Validate,
 		r.confAgentConfig.Validate,
 		r.adminServerConfig.Validate,
 		r.logRotaterConfig.Validate,

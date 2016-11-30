@@ -13,6 +13,7 @@ import (
 	"github.com/turbinelabs/adminserver/nginx-admin/logrotater"
 	"github.com/turbinelabs/agent/confagent"
 	"github.com/turbinelabs/agent/confagent/nginxconfig"
+	apiflags "github.com/turbinelabs/api/client/flags"
 	statsapi "github.com/turbinelabs/api/service/stats"
 	"github.com/turbinelabs/cli/command"
 	"github.com/turbinelabs/configwriter"
@@ -40,6 +41,8 @@ type runnerConfig struct {
 	mainMakeProcErr  error
 
 	procStartErr error
+
+	apiConfigValidateErr error
 
 	confAgentValidateErr error
 	confAgentMakeErr     error
@@ -153,6 +156,8 @@ func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase)
 	managedProc := proc.NewMockManagedProc(ctrl)
 	nginxConfig := nginxconfig.NewMockNginxConfig(ctrl)
 
+	apiConfigFromFlags := apiflags.NewMockAPIConfigFromFlags(ctrl)
+
 	confAgentFromFlags := confagent.NewMockFromFlags(ctrl)
 	confAgent := confagent.NewMockConfAgent(ctrl)
 
@@ -177,6 +182,7 @@ func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase)
 
 	runner := &runner{
 		config:                  mainFromFlags,
+		apiConfig:               apiConfigFromFlags,
 		adminServerConfig:       adminServerFromFlags,
 		confAgentConfig:         confAgentFromFlags,
 		executorConfig:          executorFromFlags,
@@ -205,6 +211,14 @@ func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase)
 
 	calls = append(calls, mainFromFlags.EXPECT().Validate().Return(config.mainValidateErr))
 	if config.mainValidateErr != nil {
+		return
+	}
+
+	calls = append(
+		calls,
+		apiConfigFromFlags.EXPECT().Validate().Return(config.apiConfigValidateErr),
+	)
+	if config.apiConfigValidateErr != nil {
 		return
 	}
 
@@ -536,6 +550,15 @@ func TestRunProcExitsWithBadCommand(t *testing.T) {
 
 func TestRunProcExitsWithInvalidConfig(t *testing.T) {
 	test := mkMockRunner(t, &runnerConfig{mainValidateErr: errors.New("boom")})
+	cmdErr := test.runner.Run(Cmd(), test.args)
+	assert.NotDeepEqual(t, cmdErr, command.NoError())
+	assert.MatchesRegex(t, cmdErr.Message, "boom")
+
+	test.ctrl.Finish()
+}
+
+func TestRunProcExitsWithInvalidApiConfig(t *testing.T) {
+	test := mkMockRunner(t, &runnerConfig{apiConfigValidateErr: errors.New("boom")})
 	cmdErr := test.runner.Run(Cmd(), test.args)
 	assert.NotDeepEqual(t, cmdErr, command.NoError())
 	assert.MatchesRegex(t, cmdErr.Message, "boom")
