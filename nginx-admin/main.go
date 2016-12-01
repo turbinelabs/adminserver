@@ -22,7 +22,6 @@ import (
 	"github.com/turbinelabs/nonstdlib/executor"
 	tbnflag "github.com/turbinelabs/nonstdlib/flag"
 	"github.com/turbinelabs/nonstdlib/proc"
-	"github.com/turbinelabs/stats/client"
 )
 
 func Cmd() *command.Cmd {
@@ -70,9 +69,9 @@ func Cmd() *command.Cmd {
 		apiflags.APIConfigSetAPIAuthKeyFromFlags(r.apiConfig.APIAuthKeyFromFlags()),
 	)
 
-	r.statsClientConfig = client.NewFromFlags(
+	r.statsClientConfig = apiflags.NewStatsClientFromFlags(
 		forwarderApiFlags,
-		client.WithAPIConfigFromFlags(forwarderApiConfig),
+		apiflags.StatsClientWithAPIConfigFromFlags(forwarderApiConfig),
 	)
 
 	r.accessLogParserConfig = logparser.NewFromFlags(
@@ -131,7 +130,7 @@ type runner struct {
 	adminServerConfig       adminserver.FromFlags
 	confAgentConfig         confagent.FromFlags
 	executorConfig          executor.FromFlags
-	statsClientConfig       client.FromFlags
+	statsClientConfig       apiflags.StatsClientFromFlags
 	accessLogParserConfig   logparser.FromFlags
 	upstreamLogParserConfig logparser.FromFlags
 	logRotaterConfig        logrotater.FromFlags

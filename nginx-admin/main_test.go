@@ -21,7 +21,6 @@ import (
 	"github.com/turbinelabs/logparser/metric"
 	"github.com/turbinelabs/nonstdlib/executor"
 	"github.com/turbinelabs/nonstdlib/proc"
-	"github.com/turbinelabs/stats/client"
 	"github.com/turbinelabs/test/assert"
 )
 
@@ -164,7 +163,7 @@ func mkMockRunner(t *testing.T, config *runnerConfig) (testcase *runnerTestCase)
 	executorFromFlags := executor.NewMockFromFlags(ctrl)
 	executor := executor.NewMockExecutor(ctrl)
 
-	statsClientFromFlags := client.NewMockFromFlags(ctrl)
+	statsClientFromFlags := apiflags.NewMockStatsClientFromFlags(ctrl)
 	statsSvc := statsapi.NewMockStatsService(ctrl)
 	stats := statsapi.AsStats(statsSvc, source.Source(), "executor")
 
