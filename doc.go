@@ -14,7 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// The adminserver package provides a tool to wrap a proc.ManagedProc with a
-// simple HTTP server that manages the process lifecycle, including termination
-// and signaling it to reload its configuration.
+// The adminserver package provides a tool to wrap a nonstdlib/proc.ManagedProc
+// with a simple HTTP server that manages the process lifecycle, including
+// termination and signaling it to reload its configuration.
+//
+// An AdminServer can be constructed directly using adminserver.New(), or
+// can be configured using a flag.FlagSet using adminserver.NewFromFlags().
 package adminserver

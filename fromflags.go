@@ -31,8 +31,13 @@ const (
 	DefaultListenPort = 9000
 )
 
+// The FromFlags interface models creation of an AdminServer from a
+// flag.FlagSet, and validation of the relevant Flags in that FlagSet.
 type FromFlags interface {
+	// Validate ensures that the Flags are properly specified.
 	Validate() error
+
+	// Make produces an AdminServer from the configured Flags.
 	Make(managedProc proc.ManagedProc) AdminServer
 }
 
@@ -41,6 +46,8 @@ type fromFlags struct {
 	port int
 }
 
+// NewFromFlags installs the Flags necessary to configure an AdminServer into
+// the provided flag.FlagSet, and returns a FromFlags.
 func NewFromFlags(flags *flag.FlagSet) FromFlags {
 	ff := &fromFlags{}
 	flags.StringVar(&ff.ip, "ip", DefaultListenIP, "What IP should we listen on")
