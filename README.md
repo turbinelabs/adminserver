@@ -16,6 +16,7 @@
 [![Apache 2.0](https://img.shields.io/hexpm/l/plug.svg)](LICENSE)
 [![GoDoc](https://godoc.org/github.com/turbinelabs/adminserver?status.svg)](https://godoc.org/github.com/turbinelabs/adminserver)
 [![CircleCI](https://circleci.com/gh/turbinelabs/adminserver.svg?style=shield)](https://circleci.com/gh/turbinelabs/adminserver)
+[![Go Report Card](https://goreportcard.com/badge/github.com/turbinelabs/adminserver)](https://goreportcard.com/report/github.com/turbinelabs/adminserver)
 
 The adminserver package provides a tool to wrap a process with a simple HTTP
 server that manages the process lifecycle, including termination and signaling.
