@@ -19,10 +19,10 @@ package adminserver
 //go:generate mockgen -source $GOFILE -destination mock_$GOFILE -package $GOPACKAGE
 
 import (
-	"flag"
 	"fmt"
 	"net"
 
+	tbnflag "github.com/turbinelabs/nonstdlib/flag"
 	"github.com/turbinelabs/nonstdlib/proc"
 )
 
@@ -48,7 +48,7 @@ type fromFlags struct {
 
 // NewFromFlags installs the Flags necessary to configure an AdminServer into
 // the provided flag.FlagSet, and returns a FromFlags.
-func NewFromFlags(flags *flag.FlagSet) FromFlags {
+func NewFromFlags(flags tbnflag.FlagSet) FromFlags {
 	ff := &fromFlags{}
 	flags.StringVar(&ff.ip, "ip", DefaultListenIP, "What IP should we listen on")
 	flags.IntVar(&ff.port, "port", DefaultListenPort, "What port should we listen on")

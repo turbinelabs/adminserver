@@ -17,18 +17,18 @@ limitations under the License.
 package adminserver
 
 import (
-	"flag"
 	"fmt"
 	"testing"
 
 	"github.com/golang/mock/gomock"
 
+	tbnflag "github.com/turbinelabs/nonstdlib/flag"
 	"github.com/turbinelabs/nonstdlib/proc"
 	"github.com/turbinelabs/test/assert"
 )
 
 func TestFromFlags(t *testing.T) {
-	flagset := flag.NewFlagSet("adminserver options", flag.PanicOnError)
+	flagset := tbnflag.NewTestFlagSet()
 	ff := NewFromFlags(flagset)
 	ffImpl := ff.(*fromFlags)
 	assert.Equal(t, ffImpl.ip, DefaultListenIP)
