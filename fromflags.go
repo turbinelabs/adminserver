@@ -50,8 +50,8 @@ type fromFlags struct {
 // the provided flag.FlagSet, and returns a FromFlags.
 func NewFromFlags(flags tbnflag.FlagSet) FromFlags {
 	ff := &fromFlags{}
-	flags.StringVar(&ff.ip, "ip", DefaultListenIP, "What IP should we listen on")
-	flags.IntVar(&ff.port, "port", DefaultListenPort, "What port should we listen on")
+	flags.StringVar(&ff.ip, "admin.ip", DefaultListenIP, "The IP address on which the admin server should listen")
+	flags.IntVar(&ff.port, "admin.port", DefaultListenPort, "The port on which the admin server should listen")
 	return ff
 }
 

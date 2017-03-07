@@ -34,7 +34,7 @@ func TestFromFlags(t *testing.T) {
 	assert.Equal(t, ffImpl.ip, DefaultListenIP)
 	assert.Equal(t, ffImpl.port, DefaultListenPort)
 
-	flagset.Parse([]string{"-ip=4.5.6.7", "-port=9999"})
+	flagset.Parse([]string{"-admin.ip=4.5.6.7", "-admin.port=9999"})
 
 	assert.Equal(t, ffImpl.ip, "4.5.6.7")
 	assert.Equal(t, ffImpl.port, 9999)
