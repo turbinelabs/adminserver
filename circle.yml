@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - checkout:
-        path: $GOPATH/src/github.com/turbinelabs/$PROJECT
+          path: $GOPATH/src/github.com/turbinelabs/$PROJECT
 
       - run: env | sort
 
