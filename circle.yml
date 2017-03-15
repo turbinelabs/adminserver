@@ -5,31 +5,31 @@ jobs:
       - image: turbinelabs/build-common:0.9.19.5
         cmd: ["/bin/bash"]
 
-  working_directory: "~/"
+    working_directory: "~/"
 
-  environment:
-    - PROJECT: adminserver
-    - TEST_RUNNER_OUTPUT: /tmp/test-results/testrunner
+    environment:
+      - PROJECT: adminserver
+      - TEST_RUNNER_OUTPUT: /tmp/test-results/testrunner
 
-  steps:
-    - checkout:
-      path: $GOPATH/src/github.com/turbinelabs/$PROJECT
+    steps:
+      - checkout:
+        path: $GOPATH/src/github.com/turbinelabs/$PROJECT
 
-    - run: env | sort
+      - run: env | sort
 
-    - run:
-        name: install deps
-        command: go get github.com/turbinelabs/$PROJECT/...
+      - run:
+          name: install deps
+          command: go get github.com/turbinelabs/$PROJECT/...
 
-    - run:
-        name: install testrunner
-        command: |
-          go get github.com/turbinelabs/test/testrunner
-          go install github.com/turbinelabs/test/testrunner
+      - run:
+          name: install testrunner
+          command: |
+            go get github.com/turbinelabs/test/testrunner
+            go install github.com/turbinelabs/test/testrunner
 
-    - run:
-        name: run tests
-        command: go test -exec testrunner github.com/turbinelabs/$PROJECT/...
+      - run:
+          name: run tests
+          command: go test -exec testrunner github.com/turbinelabs/$PROJECT/...
 
-    - store_test_results:
-        path: /tmp/test-results
+      - store_test_results:
+          path: /tmp/test-results
