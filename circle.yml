@@ -1,50 +1,35 @@
 version: 2
-executorType: docker
-
-containerInfo:
-  - image: turbinelabs/build-common:0.9.19.5
-    cmd: ["/bin/bash"]
-
-stages:
+jobs:
   build:
-    environment:
-      - PROJECT: adminserver
-      - TEST_RUNNER_OUTPUT: /tmp/test-results/testrunner
+    docker:
+      - image: turbinelabs/build-common:0.9.19.5
+        cmd: ["/bin/bash"]
 
-    steps:
-      - type: checkout
-        path: $GOPATH/src/github.com/turbinelabs/$PROJECT
+  working_directory: "~/"
 
-      - type: shell
-        shell: /bin/bash
-        command: env | sort
+  environment:
+    - PROJECT: adminserver
+    - TEST_RUNNER_OUTPUT: /tmp/test-results/testrunner
 
-      - type: shell
-        shell: /bin/bash
-        name: install git credentials
-        command: |
-          if [ -n $GITHUB_TOKEN ]; then
-            git config --global url."https://${GITHUB_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
-          fi
+  steps:
+    - checkout:
+      path: $GOPATH/src/github.com/turbinelabs/$PROJECT
 
-      - type: shell
-        shell: /bin/bash
+    - run: env | sort
+
+    - run:
         name: install deps
-        command: |
-          go get github.com/turbinelabs/$PROJECT/...
+        command: go get github.com/turbinelabs/$PROJECT/...
 
-      - type: shell
-        shell: /bin/bash
+    - run:
         name: install testrunner
         command: |
           go get github.com/turbinelabs/test/testrunner
           go install github.com/turbinelabs/test/testrunner
 
-      - type: shell
-        shell: /bin/bash
+    - run:
         name: run tests
-        command: |
-          go test -exec testrunner github.com/turbinelabs/$PROJECT/...
+        command: go test -exec testrunner github.com/turbinelabs/$PROJECT/...
 
-      - type: test-results-store
+    - store_test_results:
         path: /tmp/test-results
