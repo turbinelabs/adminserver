@@ -35,7 +35,7 @@ func TestNew(t *testing.T) {
 	ctrl := gomock.NewController(assert.Tracing(t))
 	mockProc := proc.NewMockManagedProc(ctrl)
 
-	asIface := New("localhost", 1000, mockProc)
+	asIface := New("localhost:1000", mockProc)
 
 	as := asIface.(*adminServer)
 
@@ -54,7 +54,7 @@ func mkAdminServer(t *testing.T) (AdminServer, *proc.MockManagedProc, func()) {
 	ctrl := gomock.NewController(assert.Tracing(t))
 	mockProc := proc.NewMockManagedProc(ctrl)
 
-	as := New("localhost", 0, mockProc)
+	as := New("localhost:0", mockProc)
 	go func() {
 		as.Start()
 	}()
@@ -204,7 +204,7 @@ func TestAdminServerCannotListen(t *testing.T) {
 	ctrl := gomock.NewController(assert.Tracing(t))
 	mockProc := proc.NewMockManagedProc(ctrl)
 
-	as := New("localhost", port, mockProc)
+	as := New(fmt.Sprintf("localhost:%d", port), mockProc)
 	err = as.Start()
 	assert.NonNil(t, err)
 

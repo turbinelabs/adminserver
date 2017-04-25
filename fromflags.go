@@ -19,16 +19,13 @@ package adminserver
 //go:generate mockgen -source $GOFILE -destination mock_$GOFILE -package $GOPACKAGE
 
 import (
-	"fmt"
-	"net"
-
 	tbnflag "github.com/turbinelabs/nonstdlib/flag"
 	"github.com/turbinelabs/nonstdlib/proc"
+	"github.com/turbinelabs/server"
 )
 
 const (
-	DefaultListenIP   = "127.0.0.1"
-	DefaultListenPort = 9000
+	DefaultListenAddr = "127.0.0.1:9000"
 )
 
 // The FromFlags interface models creation of an AdminServer from a
@@ -42,31 +39,30 @@ type FromFlags interface {
 }
 
 type fromFlags struct {
-	ip   string
-	port int
+	addr string
 }
 
 // NewFromFlags installs the Flags necessary to configure an AdminServer into
 // the provided flag.FlagSet, and returns a FromFlags.
 func NewFromFlags(flags tbnflag.FlagSet) FromFlags {
 	ff := &fromFlags{}
-	flags.StringVar(&ff.ip, "admin.ip", DefaultListenIP, "The IP address on which the admin server should listen")
-	flags.IntVar(&ff.port, "admin.port", DefaultListenPort, "The port on which the admin server should listen")
+	flags.StringVar(
+		&ff.addr,
+		"admin.addr",
+		DefaultListenAddr,
+		"Specifies the `host:port` on which the admin server should listen.",
+	)
 	return ff
 }
 
 func (ff *fromFlags) Validate() error {
-	if net.ParseIP(ff.ip) == nil {
-		return fmt.Errorf("invalid ip address: %s", ff.ip)
-	}
-
-	if ff.port <= 0 || ff.port > 65535 {
-		return fmt.Errorf("invalid port: %d", ff.port)
+	if err := server.ValidateListenerAddr(ff.addr); err != nil {
+		return err
 	}
 
 	return nil
 }
 
 func (ff *fromFlags) Make(managedProc proc.ManagedProc) AdminServer {
-	return New(ff.ip, ff.port, managedProc)
+	return New(ff.addr, managedProc)
 }

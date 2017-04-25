@@ -72,9 +72,7 @@ type adminServer struct {
 
 // Creates a new AdminServer on the given IP address and port,
 // wrapping the given ManagedProc.
-func New(ip string, port int, managedProc proc.ManagedProc) AdminServer {
-	hostPort := fmt.Sprintf("%s:%d", ip, port)
-
+func New(addr string, managedProc proc.ManagedProc) AdminServer {
 	adminServer := &adminServer{
 		lastRequestedSignal: NoRequestedSignal,
 		managedProc:         managedProc,
@@ -99,7 +97,7 @@ func New(ip string, port int, managedProc proc.ManagedProc) AdminServer {
 	})
 
 	adminServer.server = &http.Server{
-		Addr:         hostPort,
+		Addr:         addr,
 		Handler:      handler,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,

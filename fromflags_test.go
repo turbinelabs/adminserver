@@ -17,7 +17,6 @@ limitations under the License.
 package adminserver
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -31,32 +30,30 @@ func TestFromFlags(t *testing.T) {
 	flagset := tbnflag.NewTestFlagSet()
 	ff := NewFromFlags(flagset)
 	ffImpl := ff.(*fromFlags)
-	assert.Equal(t, ffImpl.ip, DefaultListenIP)
-	assert.Equal(t, ffImpl.port, DefaultListenPort)
+	assert.Equal(t, ffImpl.addr, DefaultListenAddr)
 
-	flagset.Parse([]string{"-admin.ip=4.5.6.7", "-admin.port=9999"})
+	flagset.Parse([]string{"-admin.addr=4.5.6.7:9999"})
 
-	assert.Equal(t, ffImpl.ip, "4.5.6.7")
-	assert.Equal(t, ffImpl.port, 9999)
+	assert.Equal(t, ffImpl.addr, "4.5.6.7:9999")
 }
 
 func TestFromFlagsValidate(t *testing.T) {
-	ff := &fromFlags{ip: "4.5.6.7", port: 9999}
+	ff := &fromFlags{addr: "4.5.6.7:9999"}
 	assert.Nil(t, ff.Validate())
 
-	ff = &fromFlags{ip: "not-an-ip", port: 9999}
-	assert.ErrorContains(t, ff.Validate(), "invalid ip")
+	ff = &fromFlags{addr: "not:an:ip:9999"}
+	assert.ErrorContains(t, ff.Validate(), "too many colons in address")
 
-	ff = &fromFlags{ip: "4.5.6.7", port: 100000}
-	assert.ErrorContains(t, ff.Validate(), "invalid port")
+	ff = &fromFlags{addr: "4.5.6.7:100000"}
+	assert.ErrorContains(t, ff.Validate(), "could not resolve port")
 }
 
 func TestFromFlagsMake(t *testing.T) {
 	ctrl := gomock.NewController(assert.Tracing(t))
 	managedProc := proc.NewMockManagedProc(ctrl)
 
-	ff := &fromFlags{ip: DefaultListenIP, port: 0}
+	ff := &fromFlags{addr: DefaultListenAddr}
 
 	adminServer := ff.Make(managedProc).(*adminServer)
-	assert.Equal(t, adminServer.server.Addr, fmt.Sprintf("%s:%d", DefaultListenIP, 0))
+	assert.Equal(t, adminServer.server.Addr, DefaultListenAddr)
 }
