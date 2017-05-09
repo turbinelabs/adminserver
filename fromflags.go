@@ -20,8 +20,8 @@ package adminserver
 
 import (
 	tbnflag "github.com/turbinelabs/nonstdlib/flag"
+	tbnnet "github.com/turbinelabs/nonstdlib/net"
 	"github.com/turbinelabs/nonstdlib/proc"
-	"github.com/turbinelabs/server"
 )
 
 const (
@@ -56,7 +56,7 @@ func NewFromFlags(flags tbnflag.FlagSet) FromFlags {
 }
 
 func (ff *fromFlags) Validate() error {
-	if err := server.ValidateListenerAddr(ff.addr); err != nil {
+	if err := tbnnet.ValidateListenerAddr(ff.addr); err != nil {
 		return err
 	}
 
