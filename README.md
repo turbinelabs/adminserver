@@ -13,7 +13,7 @@
 
 # turbinelabs/adminserver
 
-[![Apache 2.0](https://img.shields.io/hexpm/l/plug.svg)](LICENSE)
+[![Apache 2.0](https://img.shields.io/badge/license-apache%202.0-blue.svg)](LICENSE)
 [![GoDoc](https://godoc.org/github.com/turbinelabs/adminserver?status.svg)](https://godoc.org/github.com/turbinelabs/adminserver)
 [![CircleCI](https://circleci.com/gh/turbinelabs/adminserver.svg?style=shield)](https://circleci.com/gh/turbinelabs/adminserver)
 [![Go Report Card](https://goreportcard.com/badge/github.com/turbinelabs/adminserver)](https://goreportcard.com/report/github.com/turbinelabs/adminserver)
