@@ -30,29 +30,18 @@ func TestFromFlags(t *testing.T) {
 	flagset := tbnflag.NewTestFlagSet()
 	ff := NewFromFlags(flagset)
 	ffImpl := ff.(*fromFlags)
-	assert.Equal(t, ffImpl.addr, DefaultListenAddr)
+	assert.Equal(t, ffImpl.addr.Addr(), DefaultListenAddr)
 
 	flagset.Parse([]string{"-admin.addr=4.5.6.7:9999"})
 
-	assert.Equal(t, ffImpl.addr, "4.5.6.7:9999")
-}
-
-func TestFromFlagsValidate(t *testing.T) {
-	ff := &fromFlags{addr: "4.5.6.7:9999"}
-	assert.Nil(t, ff.Validate())
-
-	ff = &fromFlags{addr: "not:an:ip:9999"}
-	assert.ErrorContains(t, ff.Validate(), "too many colons in address")
-
-	ff = &fromFlags{addr: "4.5.6.7:100000"}
-	assert.ErrorContains(t, ff.Validate(), "could not resolve port")
+	assert.Equal(t, ffImpl.addr.Addr(), "4.5.6.7:9999")
 }
 
 func TestFromFlagsMake(t *testing.T) {
 	ctrl := gomock.NewController(assert.Tracing(t))
 	managedProc := proc.NewMockManagedProc(ctrl)
 
-	ff := &fromFlags{addr: DefaultListenAddr}
+	ff := &fromFlags{addr: tbnflag.NewHostPort(DefaultListenAddr)}
 
 	adminServer := ff.Make(managedProc).(*adminServer)
 	assert.Equal(t, adminServer.server.Addr, DefaultListenAddr)

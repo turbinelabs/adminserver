@@ -20,7 +20,6 @@ package adminserver
 
 import (
 	tbnflag "github.com/turbinelabs/nonstdlib/flag"
-	tbnnet "github.com/turbinelabs/nonstdlib/net"
 	"github.com/turbinelabs/nonstdlib/proc"
 )
 
@@ -31,38 +30,27 @@ const (
 // The FromFlags interface models creation of an AdminServer from a
 // flag.FlagSet, and validation of the relevant Flags in that FlagSet.
 type FromFlags interface {
-	// Validate ensures that the Flags are properly specified.
-	Validate() error
-
 	// Make produces an AdminServer from the configured Flags.
 	Make(managedProc proc.ManagedProc) AdminServer
 }
 
 type fromFlags struct {
-	addr string
+	addr tbnflag.HostPort
 }
 
 // NewFromFlags installs the Flags necessary to configure an AdminServer into
 // the provided flag.FlagSet, and returns a FromFlags.
 func NewFromFlags(flags tbnflag.FlagSet) FromFlags {
 	ff := &fromFlags{}
-	flags.StringVar(
+	flags.HostPortVar(
 		&ff.addr,
 		"admin.addr",
-		DefaultListenAddr,
+		tbnflag.NewHostPort(DefaultListenAddr),
 		"Specifies the `host:port` on which the admin server should listen.",
 	)
 	return ff
 }
 
-func (ff *fromFlags) Validate() error {
-	if err := tbnnet.ValidateListenerAddr(ff.addr); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (ff *fromFlags) Make(managedProc proc.ManagedProc) AdminServer {
-	return New(ff.addr, managedProc)
+	return New(ff.addr.Addr(), managedProc)
 }

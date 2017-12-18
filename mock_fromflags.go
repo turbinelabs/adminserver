@@ -33,18 +33,6 @@ func (m *MockFromFlags) EXPECT() *MockFromFlagsMockRecorder {
 	return m.recorder
 }
 
-// Validate mocks base method
-func (m *MockFromFlags) Validate() error {
-	ret := m.ctrl.Call(m, "Validate")
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Validate indicates an expected call of Validate
-func (mr *MockFromFlagsMockRecorder) Validate() *gomock.Call {
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Validate", reflect.TypeOf((*MockFromFlags)(nil).Validate))
-}
-
 // Make mocks base method
 func (m *MockFromFlags) Make(managedProc proc.ManagedProc) AdminServer {
 	ret := m.ctrl.Call(m, "Make", managedProc)
